@@ -53,4 +53,14 @@ The full test suite passed 121 tests before the final retention direction change
 
 ![Actual final refined construction mesh](../public/studies/stereo-camera-frame.png)
 
-Live editing, undo, persistence and export report verification follows in the production record.
+## Deployed workflow verification
+
+The Vercel preview for source commit `d510e8b1d3664772e46de1671b9c848499c05c07` completed its build and was checked through the visible controls and public model reader. File → Stereo camera frame loads the authored 25 shapes, two component envelopes, two clearance links and four endpoint attachments. Invalid centre spacing leaves the model intact. A rebuild with 62 × 44 × 32 mm envelopes, 78 mm centre spacing and decimal-comma `0,6` clearance updates both cameras and cuts; one Undo restores the original model exactly.
+
+The component dock applies a measured 61.5 mm X envelope and updates its cut to 62.5 mm. Changing X clearance to 0.7 mm updates that cut to 61.4 mm while retaining the component dock. Translation to X=−40 moves the cavity to X=−40. A 90° local Y rotation rotates the rear insertion corridor and moves its centre to X=−51. Hiding the reference leaves the linked cut enabled. Undo restores every tested change. Saving an alternative and reloading restores the same model and saved alternative.
+
+The browser's refined mesh report matches the independent final geometry: 332,548 triangles, 147.8 × 74.6 × 35.2 mm, one connected piece and zero open, nonmanifold or winding-conflict edges. It reports 12 added face planes, a 1.031 mm largest grid interval and retained flat-interface alignment after the sampling retry. This browser run took 30.5 seconds. Export prepares an STL and exposes its download link; the cloud browser did not capture a download event after clicking that link, so transfer of the file remains unverified there.
+
+WebGL is unavailable in the cloud browser. The exported mesh is therefore shown using the actual CPU render above, while the screenshot below records the live controls and audit. This is not a native iPhone rendering or physical camera-fit check. A final wording pass clarifies that Rebuild replaces the current model, including added shapes and components; its production build and scoped lint pass.
+
+![Live refined export controls and mesh audit](screenshots/stereo-frame-export-check.jpg)
