@@ -2,6 +2,10 @@
 
 The canonical model is editable design intent. Geometry, sections, silhouettes, field displays and exports are evaluations of it. Keep direct manipulation and future procedural editing as views of the same state.
 
+The design-language brief is **entropy**: controlled disorder, blended volumes, asymmetry and continuous surface motion. Start with a neutral grey form without the paired camera-eye details. Primitive shape construction, Merge/Cut/Intersect and adjustable blending are foundational tools. Entropy generation must produce editable model state, preserve history and remain reproducible from a seed.
+
+The viewport belongs to the designer. Opening tools, inserting objects, changing parameters and switching projection must preserve the camera pose. Ripple playback continues through those actions and stops through an explicit Pause command. Mobile sheets overlay a stable canvas; only sheet contents scroll during keyboard editing.
+
 Delivered mobile foundation: system-driven graphite themes, one canvas gesture owner, stable framing while editing, selection-specific inspector, coarse previews during edits and refinement after release, rendering only on change, background save, offline static shell, worker mesh export.
 
 Next engine work, informed by official nTop documentation and the supplied architecture prototype:
