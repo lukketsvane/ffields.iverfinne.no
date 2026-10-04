@@ -2,6 +2,10 @@ import {cloneModel, DEFAULT_MODEL, validateModel} from './form-engine.ts';
 import type {FormModel} from './form-engine.ts';
 import {makeShape, mirrorShape, MAX_SHAPES} from './shapes.ts';
 import type {FormShape, ShapeKind} from './shapes.ts';
+import {attachmentForEndpoint,reconcileAttachments} from './attachments.ts';
+import type {AttachmentAnchor,AttachmentOffset,SweepEndpoint} from './attachments.ts';
+import {transformShapeGroup} from './group-transform.ts';
+import type {GroupTransform} from './group-transform.ts';
 
 /** The same small, undoable actions are available to people and browser agents. */
 export type ConstructionCommand =
@@ -9,14 +13,17 @@ export type ConstructionCommand =
  | {action:'add';shape:Partial<FormShape>&{kind:ShapeKind}}
  | {action:'update';id:string;patch:Partial<Omit<FormShape,'id'|'kind'>>}
  | {action:'mirror';id:string;axis:'x'|'y'|'z';newId?:string;name?:string}
+ | {action:'attach';sweepId:string;endpoint:SweepEndpoint;targetShapeId:string;anchor:AttachmentAnchor;offset?:AttachmentOffset}
+ | {action:'detach';sweepId:string;endpoint:SweepEndpoint}
  | {action:'remove';id:string}
- | {action:'move';id:string;index:number};
+ | {action:'move';id:string;index:number}
+ | ({action:'transform'}&GroupTransform);
 
 export function blankConstruction(name='Untitled construction'):FormModel {
  return {...cloneModel(DEFAULT_MODEL),name,baseEnabled:false,asymmetry:0,influences:[],shapes:[]};
 }
 
-const fields=new Set(['id','name','kind','enabled','operation','blend','x','y','z','rx','ry','rz','width','height','depth','roundness','path','depthRatio']);
+const fields=new Set(['id','name','kind','enabled','operation','blend','x','y','z','rx','ry','rz','width','height','depth','roundness','path','depthRatio','sectionMode','sectionRoll']);
 function record(input:unknown,label:string):Record<string,unknown>{
  if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Expected '+label+'.');
  return input as Record<string,unknown>;
@@ -32,14 +39,28 @@ function shapePatch(input:unknown,allowIdentity:boolean){
 
 /** Pure and atomic: malformed commands never change the document or its IDs. */
 export function applyConstructionCommand(model:FormModel,input:unknown):FormModel {
- const c=record(input,'a construction command'),next=cloneModel(model);
+ const c=record(input,'a construction command');
  if(c.action==='start'){
   keys(c,['action','name']);
   if(c.name!==undefined&&(typeof c.name!=='string'||!c.name.trim()))throw Error('Provide a construction name.');
   return validateModel(blankConstruction(c.name as string|undefined));
  }
+ const previous=validateModel(model),next=cloneModel(previous);
  const shapes=next.shapes??[];
- if(c.action==='add'){
+ if(c.action==='attach'){
+  keys(c,['action','sweepId','endpoint','targetShapeId','anchor','offset']);
+  const selection={sweepId:c.sweepId,endpoint:c.endpoint,targetShapeId:c.targetShapeId,anchor:c.anchor} as {sweepId:string;endpoint:SweepEndpoint;targetShapeId:string;anchor:AttachmentAnchor};
+  const link=c.offset===undefined?attachmentForEndpoint(previous,selection):{...selection,offset:c.offset as AttachmentOffset};
+  next.attachments=[...(next.attachments??[]).filter(existing=>existing.sweepId!==link.sweepId||existing.endpoint!==link.endpoint),link];
+ }else if(c.action==='detach'){
+  keys(c,['action','sweepId','endpoint']);
+  if(typeof c.sweepId!=='string'||!['start','end'].includes(c.endpoint as string)||!shapes.some(shape=>shape.id===c.sweepId&&shape.kind==='sweep'))throw Error('Choose an existing sweep endpoint.');
+  next.attachments=(next.attachments??[]).filter(link=>link.sweepId!==c.sweepId||link.endpoint!==c.endpoint);
+ }else if(c.action==='transform'){
+  keys(c,['action','ids','translation','rotation','pivot']);
+  const {action,...transform}=c;void action;
+  next.shapes=transformShapeGroup(previous,transform).shapes;
+ }else if(c.action==='add'){
   keys(c,['action','shape']);const p=shapePatch(c.shape,true);
   if(!['sphere','box','capsule','cylinder','torus','sweep'].includes(p.kind as string))throw Error('Choose a valid shape kind.');
   if(shapes.length>=MAX_SHAPES)throw Error('This study can contain up to '+MAX_SHAPES+' shapes.');
@@ -68,5 +89,5 @@ export function applyConstructionCommand(model:FormModel,input:unknown):FormMode
   }
   next.shapes=shapes;
  }
- return validateModel(next);
+ return validateModel(reconcileAttachments(previous,next));
 }

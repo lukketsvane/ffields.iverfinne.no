@@ -1,0 +1,32 @@
+.section{min-width:0;margin:11px 0 0;color:var(--label)}
+.heading{font-size:12px;line-height:1.5;margin-bottom:7px}
+.modeButtons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.section button{min-height:32px;min-width:0;border:1px solid var(--line);border-radius:4px;background:var(--control);color:var(--label);font-size:12px;touch-action:manipulation}
+.section button:hover:not(:disabled){color:var(--foreground);background:var(--accent)}
+.section button:disabled{opacity:.4}
+.section button[aria-pressed=true]{border-color:var(--handle);background:var(--selected);color:var(--foreground)}
+.section button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
+.rollField{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;min-height:34px}
+.rollField>div{display:flex;align-items:center;gap:6px;color:var(--muted-foreground);font:11px var(--font-geist-mono),monospace}
+.rollField input{width:80px;min-width:0;height:30px;padding:0 6px;background:var(--control);border:1px solid var(--line);border-radius:4px;color:var(--foreground);font:12px var(--font-geist-mono),monospace;text-align:right}
+.rollField input:disabled{opacity:.4;cursor:default}
+.rollField input:focus{outline:1px solid var(--handle);border-color:var(--handle)}
+.axisRow{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.axisButtons{display:grid;grid-template-columns:repeat(3,34px);gap:4px}
+.directionFields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}
+.directionFields>label{display:flex;align-items:center;gap:5px;padding:0 6px;min-width:0;background:var(--control);border:1px solid var(--line);border-radius:4px;color:var(--muted-foreground);font:11px var(--font-geist-mono),monospace}
+.directionFields>label:focus-within{border-color:var(--handle);outline:1px solid var(--handle)}
+.directionFields input{width:100%;min-width:0;height:32px;padding:0;border:0;background:transparent;outline:0;color:var(--foreground);font:12px var(--font-geist-mono),monospace;text-align:right}
+.rollField input[aria-invalid=true],.directionFields>label:has(input[aria-invalid=true]){border-color:var(--destructive)}
+.applyButton{display:block;width:100%;margin-top:8px}
+.help{margin:7px 0 0;font-size:10px;line-height:1.5;color:var(--muted-foreground)}
+.error{margin:7px 0 0;font-size:11px;line-height:1.5;color:var(--destructive)}
+@media(max-width:760px),(max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .heading,.axisRow,.rollField{font-size:13px}
+ .section button{min-height:40px;font-size:13px}
+ .rollField{min-height:40px}
+ .rollField input{height:36px;width:87px;font-size:16px}
+ .axisButtons{grid-template-columns:repeat(3,40px)}
+ .directionFields input{height:38px;font-size:16px}
+ .help,.error{font-size:11px}
+}

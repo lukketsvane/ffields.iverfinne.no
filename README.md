@@ -25,6 +25,7 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 - Editable ellipsoids, rounded boxes, capsules, cylinders and tori with ordered Merge, Cut and Intersect operations, smooth blending, transforms and duplication.
 - Blank construction and curved sweeps with editable control points, varying radius and flattened sections. Docked XY/XZ/YZ sketches support dragging, keyboard nudges and exact numeric editing; world-plane mirrors create independent editable copies.
 - One carefully inspected Truss bracket worked study exercises these tools from an empty document. Open it from File or Insert; its parts, curves and cuts remain editable. [Development findings](docs/truss-study-findings.md) record the observed limits and next work.
+- [Construction round journal](docs/construction-rounds.md).
 - An entropy generator creates a seeded composition of blended masses and deformation fields; its result remains editable and undoable.
 - Eight editable engineering studies: Counterflow, Vortex, Halo, Strut, Confluence, Oculus, Cellular panel and Spiral. Each opens as primitive operations and analytic lattice settings, with its actual geometry shown in the project picker.
 - Gyroid and diamond sheets, honeycomb channels and octet struts with cell size, nominal thickness, thickness gradient, exterior skin and progressive cutaway controls. Optional regions retain solid mounting features outside the cellular core.

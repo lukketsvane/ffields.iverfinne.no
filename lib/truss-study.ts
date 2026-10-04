@@ -4,7 +4,7 @@ import type {FormShape,ShapeKind,SweepPoint} from './shapes.ts';
 
 /** One worked construction, built entirely with the public modelling actions. */
 const add=(id:string,name:string,kind:ShapeKind,parameters:Partial<FormShape>):ConstructionCommand=>({action:'add',shape:{id,name,kind,x:0,y:0,z:0,rx:0,ry:0,rz:0,blend:0,...parameters}});
-const path=(id:string,name:string,points:number[][],blend=4,depthRatio=.75)=>add(id,name,'sweep',{path:points.map(([x,y,z,radius])=>({x,y,z,radius})) as SweepPoint[],blend,depthRatio});
+const path=(id:string,name:string,points:number[][],blend=4,depthRatio=.75)=>add(id,name,'sweep',{path:points.map(([x,y,z,radius])=>({x,y,z,radius})) as SweepPoint[],blend,depthRatio,...(id==='upper-front'||id==='left-bridge'?{sectionMode:'transported' as const,sectionRoll:0}:{})});
 const turn=(p:number[],rx:number,ry:number,rz=0)=>{
  const [x,y,z]=p,a=rx*Math.PI/180,b=ry*Math.PI/180,c=rz*Math.PI/180;
  const cx=Math.cos(a),sx=Math.sin(a),cy=Math.cos(b),sy=Math.sin(b),cz=Math.cos(c),sz=Math.sin(c);
@@ -13,6 +13,14 @@ const turn=(p:number[],rx:number,ry:number,rz=0)=>{
 const bAxis=[-.35,-.46,.815],bFlange=[-68-bAxis[0]*13,-60-bAxis[1]*13,42-bAxis[2]*13];
 const cAxis=[.64,.74,-.20],cFlange=[92-cAxis[0]*17,70-cAxis[1]*17,-cAxis[2]*17];
 const mountingHoles:ConstructionCommand[]=[];
+const interfaceAttachments:ConstructionCommand[]=[
+ ['upper-front','a-flange','c-flange'],['upper-rear','a-flange','c-flange'],
+ ['lower-front','b-flange','c-flange'],['lower-rear','a-flange','c-flange'],
+ ['left-bridge','a-flange','b-flange'],
+].flatMap(([sweepId,start,end])=>[
+ {action:'attach',sweepId,endpoint:'start',targetShapeId:start,anchor:'center'},
+ {action:'attach',sweepId,endpoint:'end',targetShapeId:end,anchor:'center'},
+] as ConstructionCommand[]);
 for(const [index,[u,v]] of [[-16,-23],[16,-23],[-16,23],[16,23]].entries()){
  const p=turn([u,v,0],0,-90);
  mountingHoles.push(add('a-bolt-'+index,'Upright fixing '+(index+1),'cylinder',{x:-78+p[0],y:-15+p[1],z:-30+p[2],width:4,height:13,depth:4,rz:90,operation:'subtract'}));
@@ -44,6 +52,7 @@ export const TRUSS_STUDY_COMMANDS:ConstructionCommand[]=[
  add('b-bore','Front through-opening','box',{x:-68,y:-60,z:42,width:49,height:22,depth:60,roundness:2,rx:29.4,ry:-20.5,operation:'subtract'}),
  add('c-bore','Round through-opening','cylinder',{x:92,y:70,z:0,width:32,height:64,depth:32,rx:-15.1,rz:-39.8,operation:'subtract'}),
  ...mountingHoles,
+ ...interfaceAttachments,
 ];
 
 export function createTrussStudy(){
