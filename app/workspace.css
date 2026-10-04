@@ -57,16 +57,16 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
 .project-categories{display:flex;gap:5px;padding:0 12px 12px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;overscroll-behavior:contain}
 .project-categories>button{flex-shrink:0;border:1px solid var(--line);background:transparent;color:var(--muted-foreground);padding:5px 9px;border-radius:4px;font-size:11px;white-space:nowrap}
 .project-categories>button[aria-pressed=true]{background:var(--selected);color:var(--foreground);border-color:var(--handle)}
-.project-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start;flex:1;min-height:0;padding:0 12px 16px;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
-.project-card{padding:0;overflow:hidden;min-width:0;background:var(--control);border:1px solid var(--line);border-radius:7px;text-align:left;color:var(--foreground)}
+.project-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;gap:10px;align-content:start;flex:1;min-height:0;padding:0 12px 16px;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+.project-card{display:flex;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;min-width:0;background:var(--control);border:1px solid var(--line);border-radius:7px;text-align:left;color:var(--foreground)}
 .project-card:hover{border-color:var(--muted-foreground)}
 .project-card:focus-visible,.project-categories>button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
-.project-preview{position:relative;aspect-ratio:1.2;overflow:hidden;background:#252528}
+.project-preview{position:relative;aspect-ratio:1.2;flex-shrink:0;overflow:hidden;background:#252528}
 .project-preview>img,.project-preview>canvas{display:block;width:100%;height:100%;object-fit:contain}
 .project-preview>span{position:absolute;left:8px;bottom:7px;font-size:9px;color:#c0c3c7;padding:3px 5px;border:1px solid #ffffff12;border-radius:3px;background:#252528db}
 .project-preview>svg{position:absolute;right:8px;top:8px;color:#dfe1e4;opacity:0;transition:opacity .12s}
 .project-card:hover .project-preview>svg,.project-card:focus-visible .project-preview>svg{opacity:1}
-.project-caption{padding:10px 9px 11px;min-height:89px}
+.project-caption{padding:10px 9px 11px;min-height:89px;flex-shrink:0}
 .project-caption>strong{display:block;font-size:13px;font-weight:500;line-height:1.3}
 .project-caption>p{margin:5px 0 0;font-size:10px;line-height:1.5;color:var(--muted-foreground);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .project-empty{grid-column:1/-1;text-align:center;padding:24px 0;font-size:12px;color:var(--muted-foreground)}
