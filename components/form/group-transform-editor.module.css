@@ -1,0 +1,42 @@
+.section{min-width:0;margin-top:12px;border-top:1px solid var(--line);color:var(--label)}
+.section button{border:1px solid var(--line);border-radius:4px;background:var(--control);color:var(--label);font-size:12px;touch-action:manipulation;min-height:30px}
+.section button:hover:not(:disabled){background:var(--accent);color:var(--foreground)}
+.section button:disabled{opacity:.4}
+.section button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
+.section .toggle{display:flex;align-items:center;gap:8px;width:100%;padding:9px 0;min-height:38px;background:none;border:0;border-radius:0;text-align:left}
+.toggle>span{flex:1;min-width:0}
+.toggle>small{color:var(--muted-foreground);font-size:10px}
+.toggle>svg{flex-shrink:0;transition:transform .12s}
+.toggle[aria-expanded=true]>svg{transform:rotate(180deg)}
+.content{min-width:0;padding-top:2px}
+.selectionActions{display:flex;gap:6px;justify-content:flex-end;margin-bottom:7px}
+.selectionActions>button{padding:0 9px;font-size:11px;min-height:28px}
+.shapeList{overflow-y:auto;max-height:220px;min-width:0;overscroll-behavior:contain;touch-action:pan-y;border:1px solid var(--line);border-radius:5px;padding:3px}
+.section .shapeList>button{display:flex;align-items:center;gap:7px;width:100%;min-height:33px;margin:0;padding:4px 5px;border:0;background:none;text-align:left}
+.section .shapeList>button:hover{background:var(--control)}
+.section .shapeList>button[aria-checked=true]{background:var(--selected);color:var(--foreground)}
+.checkbox{display:grid;place-items:center;flex-shrink:0;width:17px;height:17px;border:1px solid var(--muted-foreground);border-radius:3px;color:var(--handle)}
+.shapeList>button[aria-checked=true]>.checkbox{border-color:var(--handle)}
+.shapeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shapeList>button>small{font-size:9px;color:var(--muted-foreground);flex-shrink:0}
+.fieldGroup{margin-top:11px}
+.fieldHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:5px;min-height:27px}
+.fieldHeading>small{color:var(--muted-foreground);font-size:10px}
+.fieldHeading>button{padding:0 7px;min-height:27px;font-size:10px}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.fields>label{display:flex;align-items:center;gap:5px;min-width:0;padding:0 6px;border:1px solid var(--line);border-radius:4px;background:var(--control);color:var(--muted-foreground);font:11px var(--font-geist-mono),monospace}
+.fields>label:focus-within{outline:1px solid var(--handle);border-color:var(--handle)}
+.fields>label:has(input[aria-invalid=true]){border-color:var(--destructive)}
+.fields input{width:100%;min-width:0;height:32px;border:0;padding:0;background:transparent;color:var(--foreground);font:12px var(--font-geist-mono),monospace;outline:0;text-align:right}
+.section .applyButton{display:block;width:100%;min-height:34px;margin-top:11px}
+.help{margin:7px 0 0;font-size:10px;line-height:1.5;color:var(--muted-foreground)}
+.error{margin:7px 0 0;font-size:11px;line-height:1.5;color:var(--destructive)}
+@media(max-width:760px),(max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .section button,.section .applyButton,.section .shapeList>button{min-height:40px;font-size:13px}
+ .section .toggle{min-height:44px}
+ .selectionActions>button,.fieldHeading>button{font-size:12px}
+ .fields input{height:38px;font-size:16px}
+ .fieldHeading{font-size:13px}
+ .help,.error{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){.toggle>svg{transition:none}}

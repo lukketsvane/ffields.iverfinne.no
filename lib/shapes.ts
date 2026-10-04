@@ -6,9 +6,11 @@ export type SweepPoint={x:number;y:number;z:number;radius:number};
  * (the height independently sets vertical tube thickness). Sweep control points
  * are local mm; width/height/depth/roundness remain serialized but do not scale
  * the sweep. Its path and radii determine the actual dimensions. depthRatio
- * defaults to 1 and flattens sections along local Z without moving the path;
- * its affine implicit field is not an exact signed distance. */
-export type FormShape = {id:string;name:string;kind:ShapeKind;enabled:boolean;operation:ShapeOperation;blend:number;x:number;y:number;z:number;rx:number;ry:number;rz:number;width:number;height:number;depth:number;roundness:number;path?:SweepPoint[];depthRatio?:number};
+ * defaults to 1. Fixed mode (the default) flattens sections along local Z;
+ * its affine implicit field is not an exact signed distance. Transported mode
+ * follows the curve with an elliptical section and optional tangent-axis roll;
+ * it returns a conservative signed distance bound, not an exact distance. */
+export type FormShape = {id:string;name:string;kind:ShapeKind;enabled:boolean;operation:ShapeOperation;blend:number;x:number;y:number;z:number;rx:number;ry:number;rz:number;width:number;height:number;depth:number;roundness:number;path?:SweepPoint[];depthRatio?:number;sectionMode?:'fixed'|'transported';sectionRoll?:number};
 export const MAX_SHAPES=32;
 export const SHAPE_LIMITS = {blend:[0,40],x:[-300,300],y:[-300,300],z:[-300,300],rx:[-360,360],ry:[-360,360],rz:[-360,360],width:[4,240],height:[4,240],depth:[4,240],roundness:[0,60]} as const;
 export const SWEEP_LIMITS={pathPoints:[2,12],coordinate:[-240,240],radius:[1.5,40],depthRatio:[.25,1]} as const;
@@ -27,11 +29,13 @@ export function isValidSweepPath(path:unknown):path is SweepPoint[]{
 export function mirrorShape(s:FormShape,axis:'x'|'y'|'z'):FormShape {
  const copy:FormShape=JSON.parse(JSON.stringify(s));copy.id='shape-'+Math.random().toString(36).slice(2,10);copy.name=(s.name+' · mirror '+axis.toUpperCase()).slice(0,100);copy[axis]=-copy[axis];
  if(axis!=='x')copy.rx=-copy.rx;if(axis!=='y')copy.ry=-copy.ry;if(axis!=='z')copy.rz=-copy.rz;
- if(copy.path)for(const point of copy.path)point[axis]=-point[axis];return copy;
+ if(copy.path)for(const point of copy.path)point[axis]=-point[axis];if(copy.sectionMode==='transported')copy.sectionRoll=-(copy.sectionRoll??0);return copy;
 }
-type SweepSegment={a:SweepPoint;b:SweepPoint;ux:number;uy:number;uz:number;length:number;slope:number;beta:number;bounds:number[]};
+type Vector=[number,number,number];
+export type SweepFrame={tangent:readonly [number,number,number];minor:readonly [number,number,number];major:readonly [number,number,number]};
+type SweepSegment={a:SweepPoint;b:SweepPoint;ux:number;uy:number;uz:number;length:number;slope:number;beta:number;bounds:number[];frame?:SweepFrame};
 type SweepNode={bounds:number[];left?:SweepNode;right?:SweepNode;segments?:SweepSegment[]};
-type SweepCache={path:SweepPoint[];depthRatio:number;values:number[];samples:readonly SweepPoint[];bounds:number[];root:SweepNode};
+type SweepCache={path:SweepPoint[];depthRatio:number;sectionMode:'fixed'|'transported';sectionRoll:number;values:number[];samples:readonly SweepPoint[];frames:readonly SweepFrame[];bounds:number[];root:SweepNode};
 const sweeps=new WeakMap<FormShape,SweepCache>();
 const blankBounds=()=>[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity];
 function expandBounds(bounds:number[],x:number,y:number,z:number,radius=0,zRadius=radius){bounds[0]=Math.min(bounds[0],x-radius);bounds[1]=Math.min(bounds[1],y-radius);bounds[2]=Math.min(bounds[2],z-zRadius);bounds[3]=Math.max(bounds[3],x+radius);bounds[4]=Math.max(bounds[4],y+radius);bounds[5]=Math.max(bounds[5],z+zRadius);}
@@ -42,13 +46,44 @@ function sweepTree(segments:SweepSegment[]):SweepNode {
  segments.sort((a,b)=>(a.bounds[axis]+a.bounds[axis+3])-(b.bounds[axis]+b.bounds[axis+3]));const middle=Math.floor(segments.length/2);
  return {bounds,left:sweepTree(segments.slice(0,middle)),right:sweepTree(segments.slice(middle))};
 }
+const vectorDot=(a:readonly number[],b:readonly number[])=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const vectorCross=(a:readonly number[],b:readonly number[]):Vector=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+function vectorUnit(a:Vector,fallback:Vector=[0,1,0]):Vector{const length=Math.hypot(...a);return length>1e-10?a.map(v=>v/length) as Vector:[...fallback];}
+function frameMinor(tangent:Vector):Vector{
+ const reference:Vector=Math.abs(tangent[2])<.999?[0,0,1]:(Math.abs(tangent[0])<Math.abs(tangent[1])?[1,0,0]:[0,1,0]),projection=vectorDot(reference,tangent);
+ return vectorUnit(reference.map((v,i)=>v-projection*tangent[i]) as Vector);
+}
+function transportMinor(minor:readonly number[],from:readonly number[],to:Vector):Vector{
+ const cosine=Math.max(-1,Math.min(1,vectorDot(from,to))),axis=vectorCross(from,to),sine=Math.hypot(...axis);let rotated:Vector;
+ if(sine<1e-8){
+  // At a reversal use the section's minor axis as the half-turn axis. The
+  // ellipse is unchanged by sign flips and never loses its transverse frame.
+  rotated=[...minor] as Vector;
+ }else{
+  const k=axis.map(v=>v/sine) as Vector,cross=vectorCross(k,minor),along=vectorDot(k,minor);
+  rotated=minor.map((v,i)=>v*cosine+cross[i]*sine+k[i]*along*(1-cosine)) as Vector;
+ }
+ const projection=vectorDot(rotated,to);return vectorUnit(rotated.map((v,i)=>v-projection*to[i]) as Vector,frameMinor(to));
+}
+function transportedFrames(samples:readonly SweepPoint[],roll:number):readonly SweepFrame[]{
+ const frames:SweepFrame[]=[],angle=roll*Math.PI/180,cosine=Math.cos(angle),sine=Math.sin(angle);let previousTangent:Vector=[0,1,0],minor:Vector=[0,0,1];
+ for(let i=0;i<samples.length;i++){
+  const before=samples[Math.max(0,i-1)],after=samples[Math.min(samples.length-1,i+1)],tangent=vectorUnit([after.x-before.x,after.y-before.y,after.z-before.z],previousTangent);
+  minor=i===0?frameMinor(tangent):transportMinor(minor,previousTangent,tangent);const major=vectorCross(tangent,minor),rolled=minor.map((v,j)=>v*cosine+major[j]*sine) as Vector;
+  frames.push(Object.freeze({tangent:Object.freeze(tangent),minor:Object.freeze(rolled),major:Object.freeze(vectorCross(tangent,rolled))}));previousTangent=tangent;
+ }
+ return Object.freeze(frames);
+}
 function sweepCache(s:FormShape):SweepCache {
  if(!isSweepShape(s))throw Error('A curved sweep needs a control-point path.');
- const path=s.path,depthRatio=s.depthRatio??1,previous=sweeps.get(s);let unchanged=previous?.path===path&&previous.depthRatio===depthRatio&&previous.values.length===path.length*4;
+ const path=s.path,depthRatio=s.depthRatio??1,sectionMode=s.sectionMode??'fixed',sectionRoll=s.sectionRoll??0,previous=sweeps.get(s);let unchanged=previous?.path===path&&previous.depthRatio===depthRatio&&previous.sectionMode===sectionMode&&previous.sectionRoll===sectionRoll&&previous.values.length===path.length*4;
  if(unchanged)for(let i=0;i<path.length;i++){const p=path[i],offset=i*4;if(p.x!==previous!.values[offset]||p.y!==previous!.values[offset+1]||p.z!==previous!.values[offset+2]||p.radius!==previous!.values[offset+3]){unchanged=false;break}}
  if(unchanged)return previous!;
  if(!isValidSweepPath(path))throw Error('Invalid curved-sweep path.');
  if(!Number.isFinite(depthRatio)||depthRatio<SWEEP_LIMITS.depthRatio[0]||depthRatio>SWEEP_LIMITS.depthRatio[1])throw Error('Invalid curved-sweep section depth.');
+ if(sectionMode!=='fixed'&&sectionMode!=='transported')throw Error('Invalid curved-sweep section mode.');
+ if(!Number.isFinite(sectionRoll)||sectionRoll< -360||sectionRoll>360)throw Error('Invalid curved-sweep section roll.');
+ const transported=sectionMode==='transported'&&depthRatio!==1,boundRatio=transported?1:depthRatio;
  const samples:SweepPoint[]=[],bounds=blankBounds(),values=path.flatMap(p=>[p.x,p.y,p.z,p.radius]);
  for(let i=0;i<path.length-1;i++){
   const a=path[i],b=path[i+1],before=path[Math.max(0,i-1)],after=path[Math.min(path.length-1,i+2)],radius=Math.max(a.radius,b.radius);
@@ -56,15 +91,18 @@ function sweepCache(s:FormShape):SweepCache {
   const bx=i===path.length-2?b.x-a.x:(after.x-a.x)/2,by=i===path.length-2?b.y-a.y:(after.y-a.y)/2,bz=i===path.length-2?b.z-a.z:(after.z-a.z)/2;
   // A cubic Hermite curve lies in the convex hull of these Bezier controls;
   // their bounds include overshoot between samples and monotone radius changes.
-  expandBounds(bounds,a.x,a.y,a.z,radius,radius*depthRatio);expandBounds(bounds,a.x+ax/3,a.y+ay/3,a.z+az/3,radius,radius*depthRatio);expandBounds(bounds,b.x-bx/3,b.y-by/3,b.z-bz/3,radius,radius*depthRatio);expandBounds(bounds,b.x,b.y,b.z,radius,radius*depthRatio);
+  expandBounds(bounds,a.x,a.y,a.z,radius,radius*boundRatio);expandBounds(bounds,a.x+ax/3,a.y+ay/3,a.z+az/3,radius,radius*boundRatio);expandBounds(bounds,b.x-bx/3,b.y-by/3,b.z-bz/3,radius,radius*boundRatio);expandBounds(bounds,b.x,b.y,b.z,radius,radius*boundRatio);
   for(let j=i===0?0:1;j<=8;j++){const t=j/8,t2=t*t,t3=t2*t,h00=2*t3-3*t2+1,h10=t3-2*t2+t,h01=-2*t3+3*t2,h11=t3-t2,smooth=t2*(3-2*t);samples.push(Object.freeze({x:h00*a.x+h10*ax+h01*b.x+h11*bx,y:h00*a.y+h10*ay+h01*b.y+h11*by,z:h00*a.z+h10*az+h01*b.z+h11*bz,radius:a.radius+(b.radius-a.radius)*smooth}));}
  }
- const metric=depthRatio===1?samples:samples.map(p=>({...p,z:p.z/depthRatio})),segments:SweepSegment[]=[];for(let i=0;i<metric.length-1;i++){const a=metric[i],b=metric[i+1],dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,length=Math.hypot(dx,dy,dz),radius=Math.max(a.radius,b.radius),segmentBounds=blankBounds(),slope=length?(b.radius-a.radius)/length:0;expandBounds(segmentBounds,a.x,a.y,a.z,radius);expandBounds(segmentBounds,b.x,b.y,b.z,radius);segments.push({a,b,ux:length?dx/length:0,uy:length?dy/length:0,uz:length?dz/length:0,length,slope,beta:Math.sqrt(Math.max(0,1-slope*slope)),bounds:segmentBounds});}
- const cache={path,depthRatio,values,samples:Object.freeze(samples),bounds,root:sweepTree(segments)};sweeps.set(s,cache);return cache;
+ const frames=sectionMode==='transported'?transportedFrames(samples,sectionRoll):Object.freeze([]),metric=depthRatio===1||transported?samples:samples.map(p=>({...p,z:p.z/depthRatio})),segments:SweepSegment[]=[];for(let i=0;i<metric.length-1;i++){const a=metric[i],b=metric[i+1],dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,length=Math.hypot(dx,dy,dz),radius=Math.max(a.radius,b.radius),segmentBounds=blankBounds(),slope=length?(b.radius-a.radius)/length:0;expandBounds(segmentBounds,a.x,a.y,a.z,radius);expandBounds(segmentBounds,b.x,b.y,b.z,radius);let frame:SweepFrame|undefined;if(transported){const tangent=vectorUnit([dx,dy,dz],frames[i].tangent as Vector),minor=transportMinor(frames[i].minor,frames[i].tangent,tangent);frame={tangent,minor,major:vectorCross(tangent,minor)};}segments.push({a,b,ux:length?dx/length:0,uy:length?dy/length:0,uz:length?dz/length:0,length,slope,beta:Math.sqrt(Math.max(0,1-slope*slope)),bounds:segmentBounds,frame});}
+ const cache={path,depthRatio,sectionMode,sectionRoll,values,samples:Object.freeze(samples),frames,bounds,root:sweepTree(segments)};sweeps.set(s,cache);return cache;
 }
 /** Shared local centerline and radius approximation for editing, bounds and
  * every mesh quality. Export refines the spatial grid, not the sweep surface. */
 export function sweepSamples(s:FormShape):readonly SweepPoint[]{return sweepCache(s).samples;}
+/** Transported sample frames in shape-local coordinates; fixed sweeps return
+ * no frames. Sampling, caps and frame transport are independent of mesh grid. */
+export function sweepFrames(s:FormShape):readonly SweepFrame[]{return sweepCache(s).frames;}
 // Chebyshev distance outside / signed face distance inside is a conservative
 // lower bound for any solid inside this box, without a square root per BVH node.
 function boxLowerBound(bounds:number[],x:number,y:number,z:number){return Math.max(bounds[0]-x,x-bounds[3],bounds[1]-y,y-bounds[4],bounds[2]-z,z-bounds[5]);}
@@ -79,6 +117,22 @@ function sweepSegmentField(segment:SweepSegment,x:number,y:number,z:number){
  if(t<=0)return Math.sqrt(radialSquared+axial*axial)-a.radius;
  if(t>=length){const end=axial-length;return Math.sqrt(radialSquared+end*end)-b.radius;}
  return radial*segment.beta-a.radius-slope*axial;
+}
+function transportedSegmentField(segment:SweepSegment,x:number,y:number,z:number,ratio:number){
+ const {a,b,length,slope,frame}=segment,dx=x-a.x,dy=y-a.y,dz=z-a.z,t=frame!.tangent,major=frame!.major,minor=frame!.minor;
+ const axial=dx*t[0]+dy*t[1]+dz*t[2],wide=dx*major[0]+dy*major[1]+dz*major[2],thin=(dx*minor[0]+dy*minor[1]+dz*minor[2])/ratio,radialSquared=wide*wide+thin*thin;
+ let field:number;
+ if(length<1e-9||Math.abs(slope)>=1){const larger=a.radius>=b.radius?a:b,end=larger===a?axial:axial-length;field=Math.sqrt(radialSquared+end*end)-larger.radius;}
+ else {const radial=Math.sqrt(radialSquared),at=axial+slope*radial/segment.beta;if(at<=0)field=Math.sqrt(radialSquared+axial*axial)-a.radius;else if(at>=length){const end=axial-length;field=Math.sqrt(radialSquared+end*end)-b.radius;}else field=radial*segment.beta-a.radius-slope*axial;}
+ // The metric stretches by at most 1/ratio. Normalization makes each segment
+ // field 1-Lipschitz in world units, and min retains a safe distance bound.
+ return field*ratio;
+}
+function transportedNodeField(node:SweepNode,x:number,y:number,z:number,ratio:number,best:number):number{
+ // A distance *bound* may be smaller than distance to its enclosing box.
+ // Do not use the ordinary capsule BVH's metric pruning for this new field.
+ if(node.segments){for(const segment of node.segments)best=Math.min(best,transportedSegmentField(segment,x,y,z,ratio));return best;}
+ return transportedNodeField(node.right!,x,y,z,ratio,transportedNodeField(node.left!,x,y,z,ratio,best));
 }
 function sweepNodeField(node:SweepNode,x:number,y:number,z:number,best:number):number {
  if(boxLowerBound(node.bounds,x,y,z)>=best)return best;
@@ -107,7 +161,7 @@ export type ShapeEvaluator=(x:number,y:number,z:number,limit?:number)=>number;
 export function compileShape(s:FormShape):ShapeEvaluator {
  const shape={...s},r=transform(s),originX=s.x,originY=s.y,originZ=s.z,cache=s.kind==='sweep'?sweepCache(s):undefined;
  const exact=s.kind==='box'||(s.kind==='cylinder'&&s.width===s.depth)||(s.kind==='sphere'&&s.width===s.height&&s.width===s.depth)||(s.kind==='capsule'&&s.width===s.depth&&s.width<=s.height&&(s.roundness===s.width/2||s.roundness===0));
- const bounds=cache||exact?shapeBounds(s):undefined;
+ const transported=cache?.sectionMode==='transported'&&cache.depthRatio!==1,bounds=!transported&&(cache||exact)?shapeBounds(s):undefined;
  return (x,y,z,limit=Infinity)=>{
   // Flattened sweeps evaluate distance in a stretched metric. Their positive
   // outside-box lower bound remains safe; for negative limits multiply it by
@@ -133,7 +187,7 @@ function evaluateLocalShape(s:FormShape,px:number,py:number,pz:number,limit:numb
   case 'capsule':{const cap=Math.min(s.roundness>0?s.roundness:Math.min(hx,hy,hz),hx,hy,hz),end=hy-cap;return ellipsoid(px,py-Math.max(-end,Math.min(end,py)),pz,hx,cap,hz);}
   case 'cylinder':{const radial=ellipse(px,pz,hx,hz),axial=Math.abs(py)-hy;return Math.min(Math.max(radial,axial),0)+Math.hypot(Math.max(radial,0),Math.max(axial,0));}
   case 'torus':{const scale=Math.min(hx,hz),tube=scale*s.roundness,radial=(Math.hypot(px/hx,pz/hz)-(1-s.roundness))*scale;return ellipse(radial,py,tube,hy);}
-  case 'sweep':{const cache=compiledSweep??sweepCache(s);return sweepNodeField(cache.root,px,py,pz/cache.depthRatio,limit);}
+  case 'sweep':{const cache=compiledSweep??sweepCache(s);return cache.sectionMode==='transported'&&cache.depthRatio!==1?transportedNodeField(cache.root,px,py,pz,cache.depthRatio,limit):sweepNodeField(cache.root,px,py,pz/cache.depthRatio,limit);}
  }
 }
 /** Conservative world-space AABB, including every rotated primitive surface. */
