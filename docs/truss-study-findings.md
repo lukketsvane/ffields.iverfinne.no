@@ -17,6 +17,10 @@ start med **blank construction** i filmenyen. legg inn **sweep** i insert-panele
 - runde tverrsnitt gav for mykje preg av røyr. flata tverrsnitt er nødvendig for dei breiare, organiske greinene i referansen.
 - flensar og små hol fekk tydeleg taggete kantar ved den første, grovare meshoppløysinga. dette avdekte ein svakheit i nullkryssinga i mesheren.
 - første evaluering ved 134 tok 27,7 sekund på denne maskina. avgrensa evaluering av csg og førebudde kurvefelt reduserte same geometri til 7,5 sekund. dette er målingar frå utviklingsmiljøet; telefonfart må målast på ein telefon.
+- vidare kontroll fann ein feil i nullkryssinga ved harde møte mellom flater: enkelte eksportpunkt låg opptil 0,417 mm frå feltet si nullflate. ein adaptiv, avgrensa rotløysar rettar dette utan å endre delte meshkantar. største feltavvik i kontrollen ved 134 vart 0,0000131 mm. dette er solverpresisjon; det fjernar ikkje sjølve trekantapproksimasjonen.
+- endeleg eksport ved 220 tok 20,0 sekund og gav 349 700 trekantar. vinklane viser meir varierande opningar, flata greiner og reinare overgangar til flensane. skarpe kanter og små hol har framleis synleg diskretisering.
+- den endelege stl-fila har éin samanhengande komponent, ingen opne kantar, ingen kantar med fleire enn to naboflater og konsekvent orientering. alle koordinatar er endelege. nokre svært små trekantar står att ved nullkryssingane; lokal meshing bør òg forbetre dette.
+- den same studien er bygd i arbeidsflata gjennom 28 handlingar: eitt tomt dokument og 27 former. numerisk punktredigering, dragging i skissa, innsetjing av punkt og spegling er testa. angre gjenoppretta nøyaktig same dokument. escape avbraut namneendring, og modellen og det lagra alternativet overlevde gjenopning. nettlesaren i testmiljøet har webgl avslått; 3d-geometrien er difor inspisert gjennom meshen, medan grensesnittet vert testa direkte.
 
 ## neste programmeringsrunde
 

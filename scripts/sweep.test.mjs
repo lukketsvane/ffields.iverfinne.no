@@ -117,6 +117,15 @@ test('sweeps participate in ordered cuts, smooth unions, ripple geometry and clo
  const edges=new Map();for(let i=0;i<mesh.indices.length;i+=3)for(let j=0;j<3;j++){const a=mesh.indices[i+j],b=mesh.indices[i+(j+1)%3],key=a<b?`${a}:${b}`:`${b}:${a}`;edges.set(key,(edges.get(key)??0)+1);}assert.equal([...edges.values()].filter(count=>count!==2).length,0,'every mesh edge has two faces');
 });
 
+test('adaptive edge roots converge at tilted flange and bore CSG intersections',()=>{
+ const sleeve={...makeShape('cylinder'),id:'tilted-sleeve',x:0,y:0,z:0,width:44,height:30,depth:44,blend:0,rx:-15.1,rz:-39.8},flangeCenter=world(sleeve,{x:0,y:12,z:0});
+ const flange={...sleeve,id:'tilted-flange',width:56,height:5,depth:56,x:flangeCenter[0],y:flangeCenter[1],z:flangeCenter[2],blend:1.5},bore={...sleeve,id:'tilted-bore',width:32,height:80,depth:32,operation:'subtract'};
+ const m=solid(sleeve,{shapes:[sleeve,flange,bore]}),compiled=m.shapes.map(compileShape),mesh=generateMesh(m,56);
+ let maximum=0;for(let i=0;i<mesh.positions.length;i+=3)maximum=Math.max(maximum,Math.abs(evaluateBase(m,mesh.positions[i],mesh.positions[i+1],mesh.positions[i+2],compiled)));
+ assert.ok(maximum<.0001,`actual field residual is below 0.1 micron at every rim vertex; max=${maximum}`);
+ const edges=new Map();for(let i=0;i<mesh.indices.length;i+=3)for(let j=0;j<3;j++){const a=mesh.indices[i+j],b=mesh.indices[i+(j+1)%3],key=a<b?`${a}:${b}`:`${b}:${a}`;edges.set(key,(edges.get(key)??0)+1);}assert.equal([...edges.values()].filter(count=>count!==2).length,0,'shared edge roots preserve the closed topology');
+});
+
 test('sweep import rejects malformed paths while legacy and mixed documents remain unchanged',()=>{
  const original=makeShape('sweep');
  for(const path of [undefined,null,[],[point(0,0)],Array.from({length:13},()=>point(0,0)),[point(0,0),point(Infinity,0)],[point(0,0),point(0,0,0,-1)],[point(0,0),point(241,0)],[point(0,0),{x:0,y:0,z:0,radius:'6'}]])assert.throws(()=>validateModel(solid({...original,path})),'malformed path is rejected');

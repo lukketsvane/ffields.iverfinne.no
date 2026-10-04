@@ -132,7 +132,16 @@ function vertex(a:number,b:number){const ia=ids[a],ib=ids[b],key=ia<ib?ia+':'+ib
 // Refine against the actual field while remaining on the shared tetrahedron
 // edge. This improves circular bores and sharp CSG seams without moving a
 // vertex off its sampling edge, changing topology, or defining a new surface.
-for(let refine=0;refine<2;refine++){const value=field(x,y,z);if(!Number.isFinite(value)||Math.abs(value)<1e-5)break;if((value<0)===(vlo<0)){lo=t;vlo=value}else{hi=t;vhi=value}t=clamp(lo+(hi-lo)*vlo/(vlo-vhi),lo,hi);x=pa[0]+(pb[0]-pa[0])*t;y=pa[1]+(pb[1]-pa[1])*t;z=pa[2]+(pb[2]-pa[2])*t;}
+for(let refine=0;refine<24;refine++){
+ const value=field(x,y,z);if(!Number.isFinite(value)||Math.abs(value)<1e-5)break;
+ if((value<0)===(vlo<0)){lo=t;vlo=value}else{hi=t;vhi=value}
+ // Hard CSG corners can leave regula falsi stuck against one endpoint. Use
+ // periodic bisection and reject endpoint-hugging secants so the sign bracket
+ // contracts even when the active surface changes within a sampling edge.
+ const span=hi-lo,candidate=lo+span*vlo/(vlo-vhi);
+ t=refine%2===1||candidate<=lo+span*.1||candidate>=hi-span*.1?(lo+hi)/2:candidate;
+ x=pa[0]+(pb[0]-pa[0])*t;y=pa[1]+(pb[1]-pa[1])*t;z=pa[2]+(pb[2]-pa[2])*t;
+}
 const n=positions.length/3;positions.push(x,y,z);const e=.06,dx=field(x+e,y,z)-field(x-e,y,z),dy=field(x,y+e,z)-field(x,y-e,z),dz=field(x,y,z+e)-field(x,y,z-e),len=Math.hypot(dx,dy,dz)||1;normals.push(dx/len,dy/len,dz/len);edges.set(key,n);return n}
 function triangle(a:number,b:number,c:number){const ax=positions[a*3],ay=positions[a*3+1],az=positions[a*3+2],ux=positions[b*3]-ax,uy=positions[b*3+1]-ay,uz=positions[b*3+2]-az,vx=positions[c*3]-ax,vy=positions[c*3+1]-ay,vz=positions[c*3+2]-az;const cx=uy*vz-uz*vy,cy=uz*vx-ux*vz,cz=ux*vy-uy*vx;if(cx*direction[0]+cy*direction[1]+cz*direction[2]<0){const temp=b;b=c;c=temp}indices.push(a,b,c);const b0=b*3,c0=c*3;volume+=(ax*(positions[b0+1]*positions[c0+2]-positions[b0+2]*positions[c0+1])+ay*(positions[b0+2]*positions[c0]-positions[b0]*positions[c0+2])+az*(positions[b0]*positions[c0+1]-positions[b0+1]*positions[c0]))/6}
 for(let k=0;k<nz;k++)for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){let inside=0;for(let c=0;c<8;c++){const o=offsets[c];ids[c]=(k+o[2])*layer+(j+o[1])*row+i+o[0];pts[c]=[minX+(i+o[0])*sx,minY+(j+o[1])*sy,minZ+(k+o[2])*sz];if(values[ids[c]]<0)inside++}if(inside===0||inside===8)continue;for(const tet of tets){const inn=tet.filter(c=>values[ids[c]]<0),out=tet.filter(c=>values[ids[c]]>=0);if(!inn.length||!out.length)continue;direction=[0,1,2].map(axis=>out.reduce((sum,c)=>sum+pts[c][axis],0)/out.length-inn.reduce((sum,c)=>sum+pts[c][axis],0)/inn.length);if(inn.length===1)triangle(vertex(inn[0],out[0]),vertex(inn[0],out[1]),vertex(inn[0],out[2]));else if(inn.length===3)triangle(vertex(out[0],inn[0]),vertex(out[0],inn[1]),vertex(out[0],inn[2]));else if(inn.length===2){const a=vertex(inn[0],out[0]),b=vertex(inn[0],out[1]),c=vertex(inn[1],out[0]),d=vertex(inn[1],out[1]);triangle(a,b,c);triangle(b,d,c)}}}// Apply the same explicit deformation used by the GPU, including its normal Jacobian.
