@@ -1,10 +1,10 @@
 "use client";
 
-import {Box,Layers,Waves,LockKeyhole,Download,Move,Hand,Expand,Shrink,Square,Rotate3D,Circle,Pill,Cylinder,Donut} from 'lucide-react';
+import {Box,Layers,Waves,LockKeyhole,Download,Move,Hand,Expand,Shrink,Square,Rotate3D,Circle,Pill,Cylinder,Donut,Spline} from 'lucide-react';
 import type {FormModel} from '@/lib/form-engine';
 
 const fieldIcons = {wave:Waves,grip:Hand,bulge:Expand,pinch:Shrink,flatten:Square,twist:Rotate3D};
-const shapeIcons = {sphere:Circle,box:Box,capsule:Pill,cylinder:Cylinder,torus:Donut};
+const shapeIcons = {sphere:Circle,box:Box,capsule:Pill,cylinder:Cylinder,torus:Donut,sweep:Spline};
 const operationNames = {union:'Merge',subtract:'Cut',intersect:'Intersect'};
 
 type RelationshipsProps = {
@@ -47,7 +47,7 @@ export function Relationships({model,selected,onSelect,onExport}:RelationshipsPr
   </button>;})}
   <button className={'graph-card '+(selected===bodySelection?'active':'')} style={{left:390,top:middle}} onClick={()=>onSelect(bodySelection)} aria-label="Select body result">
    <span className="graph-card-title">{model.protect?<LockKeyhole/>:<Move/>}Body</span>
-   <span className="graph-card-value">{model.lenses?(model.protect?'Fixed openings':'Lens openings'):shapes.length?`${enabledForms} forms · Deformed mass`:'Deformed mass'}</span>
+   <span className="graph-card-value">{model.lenses?(model.protect?'Fixed openings':'Lens openings'):shapes.length?`${enabledForms} forms · ${model.influences.length?'Deformed mass':'Construction'}`:'Deformed mass'}</span>
   </button>
   <button className={'graph-card '+(selected==='enclosure'?'active':'')} style={{left:574,top:middle}} onClick={()=>onSelect('enclosure')}>
    <span className="graph-card-title"><Layers/>Shell</span>

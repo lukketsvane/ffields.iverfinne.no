@@ -23,6 +23,8 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 
 - Grey, eye-free starter form. Camera enclosures and component references remain optional tools.
 - Editable ellipsoids, rounded boxes, capsules, cylinders and tori with ordered Merge, Cut and Intersect operations, smooth blending, transforms and duplication.
+- Blank construction and curved sweeps with editable control points, varying radius and flattened sections. Docked XY/XZ/YZ sketches support dragging, keyboard nudges and exact numeric editing; world-plane mirrors create independent editable copies.
+- One carefully inspected Truss bracket worked study exercises these tools from an empty document. Open it from File or Insert; its parts, curves and cuts remain editable. [Development findings](docs/truss-study-findings.md) record the observed limits and next work.
 - An entropy generator creates a seeded composition of blended masses and deformation fields; its result remains editable and undoable.
 - Eight editable engineering studies: Counterflow, Vortex, Halo, Strut, Confluence, Oculus, Cellular panel and Spiral. Each opens as primitive operations and analytic lattice settings, with its actual geometry shown in the project picker.
 - Gyroid and diamond sheets, honeycomb channels and octet struts with cell size, nominal thickness, thickness gradient, exterior skin and progressive cutaway controls. Optional regions retain solid mounting features outside the cellular core.
@@ -42,6 +44,9 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | `app/page.tsx` | Document state, undo, selection, tools and inspector |
 | `lib/form-engine.ts` | Shape composition, deformation fields, shell/apertures, mesh generation and exports |
 | `lib/shapes.ts` | Primitive fields, transforms and conservative sampling bounds |
+| `lib/construction.ts` | Validated, undoable from-scratch modelling commands shared by UI and WebMCP |
+| `lib/truss-study.ts` | One reproducible worked construction using those commands |
+| `components/form/sweep-editor.tsx` | Docked planar curve sketch and precise control-point editing |
 | `lib/lattice.ts` | Constant-size periodic lattice fields, material regions, skin and cutaways |
 | `lib/project-templates.ts` | Editable engineering study construction recipes |
 | `lib/workspace-camera.ts` | Projection changes that preserve the camera pose |
