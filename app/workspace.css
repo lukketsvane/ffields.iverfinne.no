@@ -44,3 +44,67 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
   .camera-controls{top:7px;grid-template-columns:36px;padding:1px}
   .camera-controls>button:first-child{height:36px}
 }
+
+/* Project studies use a docked browser, with the model still visible. */
+.form-app.projects-open{--left:380px}
+.projects-open .outline-panel{visibility:hidden}
+.project-browser{position:absolute;left:0;top:var(--top);bottom:var(--bottom);width:var(--left);z-index:31;display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border-right:1px solid var(--line)}
+.project-browser>header{display:flex;align-items:center;gap:6px;height:60px;padding:0 10px;flex-shrink:0;border-bottom:1px solid var(--line)}
+.project-browser>header>div{display:flex;flex:1;flex-direction:column;gap:3px;min-width:0}
+.project-browser>header strong{font-size:14px;font-weight:500;color:var(--foreground)}
+.project-browser>header span{font-size:11px;color:var(--muted-foreground)}
+.project-search{margin-top:12px;margin-bottom:10px}
+.project-categories{display:flex;gap:5px;padding:0 12px 12px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;overscroll-behavior:contain}
+.project-categories>button{flex-shrink:0;border:1px solid var(--line);background:transparent;color:var(--muted-foreground);padding:5px 9px;border-radius:4px;font-size:11px;white-space:nowrap}
+.project-categories>button[aria-pressed=true]{background:var(--selected);color:var(--foreground);border-color:var(--handle)}
+.project-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;gap:10px;align-content:start;flex:1;min-height:0;padding:0 12px 16px;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+.project-card{display:flex;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;min-width:0;background:var(--control);border:1px solid var(--line);border-radius:7px;text-align:left;color:var(--foreground)}
+.project-card:hover{border-color:var(--muted-foreground)}
+.project-card:focus-visible,.project-categories>button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
+.project-preview{position:relative;aspect-ratio:1.2;flex-shrink:0;overflow:hidden;background:#252528}
+.project-preview>img,.project-preview>canvas{display:block;width:100%;height:100%;object-fit:contain}
+.project-preview>span{position:absolute;left:8px;bottom:7px;font-size:9px;color:#c0c3c7;padding:3px 5px;border:1px solid #ffffff12;border-radius:3px;background:#252528db}
+.project-preview>svg{position:absolute;right:8px;top:8px;color:#dfe1e4;opacity:0;transition:opacity .12s}
+.project-card:hover .project-preview>svg,.project-card:focus-visible .project-preview>svg{opacity:1}
+.project-caption{padding:10px 9px 11px;min-height:89px;flex-shrink:0}
+.project-caption>strong{display:block;font-size:13px;font-weight:500;line-height:1.3}
+.project-caption>p{margin:5px 0 0;font-size:10px;line-height:1.5;color:var(--muted-foreground);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.project-empty{grid-column:1/-1;text-align:center;padding:24px 0;font-size:12px;color:var(--muted-foreground)}
+.projects-button.active{border-color:var(--handle);color:var(--handle)}
+.lattice-control-label{font-size:12px;color:var(--label);margin:3px 0 8px}
+.lattice-patterns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.lattice-patterns>button,.lattice-axis button{height:29px;border:1px solid var(--line);border-radius:4px;background:var(--control);color:var(--label);font-size:12px}
+.lattice-patterns>button[aria-pressed=true],.lattice-axis button[aria-pressed=true]{border-color:var(--handle);background:var(--selected);color:var(--foreground)}
+.lattice-patterns>button:focus-visible,.lattice-axis button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
+.lattice-axis{display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:8px}
+.lattice-axis>span{font-size:12px;color:var(--label)}
+.lattice-axis>div{display:grid;grid-template-columns:repeat(3,36px);gap:4px}
+.lattice-patterns>button:hover,.lattice-axis button:hover{color:var(--foreground)}
+@media(min-width:761px) and (max-width:1100px){
+ .form-app.projects-open{--left:340px;--right:0px}
+ .projects-open .floating-panel{display:none}
+}
+@media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .form-app.projects-open{--left:0px}
+ .project-browser{top:auto;left:calc(10px + env(safe-area-inset-left));right:calc(10px + env(safe-area-inset-right));width:auto;bottom:calc(var(--dock-bottom) + 51px);height:min(61%,520px);max-height:calc(100% - var(--dock-bottom) - var(--top) - 100px);border:1px solid var(--line);border-bottom:0;border-radius:13px 13px 0 0;z-index:35}
+ .project-browser>header{height:52px;padding:0 7px}
+ .project-browser>header>.icon-button{width:40px;height:40px}
+ .project-browser>header strong{font-size:14px}
+ .project-search{margin-top:10px;margin-bottom:8px}
+ .project-categories{padding-bottom:10px}
+ .project-categories>button{min-height:34px;font-size:12px}
+ .project-results{gap:9px}
+ .project-caption{min-height:89px;padding:10px}
+ .project-caption>strong{font-size:14px}
+ .project-caption>p{font-size:11px}
+ .projects-open .mobile-dock{border-radius:0 0 13px 13px}
+ .lattice-patterns>button,.lattice-axis button{height:36px;font-size:13px}
+ .lattice-control-label,.lattice-axis>span{font-size:13px}
+}
+@media(min-width:600px) and (max-width:760px) and (max-height:520px), (min-width:600px) and (max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .project-browser{left:auto;width:326px;height:calc(100% - var(--dock-bottom) - var(--top) - 61px);max-height:none}
+}
+
+.mobile-project-entry{display:none}
+@media(min-width:761px) and (max-width:1100px){.toolbar-end .projects-button>span,.toolbar-end .entropy-button>span{display:none}}
+@media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){.mobile-project-entry{display:block;margin-left:5px}.mobile-project-entry .icon-button{width:36px;height:36px}}

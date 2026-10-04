@@ -2,10 +2,12 @@ import assetCatalog from './asset-catalog.json' with {type:'json'};
 import type {PlacedAsset} from './assets';
 import {evaluateShape,makeShape,shapeBounds,SHAPE_LIMITS,MAX_SHAPES} from './shapes.ts';
 import type {FormShape} from './shapes.ts';
+import {applyLattice,LATTICE_LIMITS} from './lattice.ts';
+import type {LatticeSettings} from './lattice.ts';
 export type InfluenceKind = 'wave'|'grip'|'bulge'|'pinch'|'flatten'|'twist';
 export type Falloff = 'gaussian'|'linear'|'smooth'|'constant';
 export type Influence = {id:string;name:string;kind:InfluenceKind;enabled:boolean;strength:number;radius:number;x:number;y:number;z:number;wavelength:number;phase:number;angle:number;falloff:Falloff};
-export type FormModel = {version:1;name:string;width:number;height:number;depth:number;softness:number;asymmetry:number;lensSpacing:number;lensRadius:number;protect:boolean;lenses:boolean;shell:boolean;wall:number;usb:boolean;buttons:boolean;fingerGrooves:boolean;assets?:PlacedAsset[];shapes?:FormShape[];baseEnabled?:boolean;influences:Influence[]};
+export type FormModel = {version:1;name:string;width:number;height:number;depth:number;softness:number;asymmetry:number;lensSpacing:number;lensRadius:number;protect:boolean;lenses:boolean;shell:boolean;wall:number;usb:boolean;buttons:boolean;fingerGrooves:boolean;assets?:PlacedAsset[];shapes?:FormShape[];baseEnabled?:boolean;lattice?:LatticeSettings;influences:Influence[]};
 export type Variant={id:string;name:string;model:FormModel;image?:string};
 export type MeshData={positions:Float32Array;normals:Float32Array;indices:Uint32Array;volume:number;bounds:number[]};
 export const LIMITS={width:[90,220],height:[45,120],depth:[22,90],softness:[2,24],asymmetry:[-15,15],lensSpacing:[24,70],lensRadius:[8,18],wall:[1.6,6]} as const;
@@ -61,7 +63,9 @@ export function evaluateBase(m:FormModel,x:number,y:number,z:number){const px=x,
  if(m.fingerGrooves){for(const yy of [-17,-3,11]){const groove=capsule(px,py,pz,m.width*.30,yy,m.depth/2+13.5,m.width*.51,yy+7,m.depth/2+8.5,5);exterior=-smoothUnion(-exterior,groove,5)}}
  // Annular seats are part of the enclosure, with small edge fillets.
  if(m.lenses){for(const cx of lensCenters(m)){const seat=cylinderZ(px-cx,py-lensY(m),pz-(m.depth/2-2.7),m.lensRadius-.1,2.5)-.6;exterior=smoothUnion(exterior,seat,2.8)}}
- let d=m.shell?Math.max(exterior,-exterior-m.wall):exterior;
+ // An enabled lattice builds a real core and uses its own outer skin. Disabled
+ // and legacy documents retain their existing hollow-shell behavior.
+ let d=m.lattice?.enabled?applyLattice(exterior,m.lattice,x,y,z,m):m.shell?Math.max(exterior,-exterior-m.wall):exterior;
  // Subtract apertures AFTER shelling: both connect to the internal cavity.
  if(m.lenses){for(const cx of lensCenters(m)){const bore=cylinderZ(px-cx,py-lensY(m),pz-m.depth/2,m.lensRadius-1,m.depth/2+1);d=Math.max(d,-bore)}}
  if(m.usb){const p=portPosition(m),port=roundBox(px-p[0],py-p[1],pz-p[2],12,1.9,4.8,1.2);d=Math.max(d,-port)}
@@ -82,16 +86,28 @@ export function validateModel(input:unknown):FormModel {
  if(m.version!==1||typeof m.name!=='string'||m.name.length>120||!Array.isArray(m.influences)||m.influences.length>20)throw Error('Unsupported model file.');
  for(const [key,range]of Object.entries(LIMITS)){const val=m[key as keyof typeof LIMITS];if(typeof val!=='number'||!Number.isFinite(val)||val<range[0]||val>range[1])throw Error('Invalid '+key+' value.');}
  if([m.protect,m.lenses,m.shell,m.usb,m.buttons,m.fingerGrooves].some(v=>typeof v!=='boolean')||(m.baseEnabled!==undefined&&typeof m.baseEnabled!=='boolean'))throw Error('Invalid region settings.');
- const ids=new Set<string>(['body','regions','enclosure','canvas']);
+ const ids=new Set<string>(['body','regions','enclosure','canvas','lattice']);
  for(const f of m.influences){if(!f||typeof f.id!=='string'||!f.id.length||f.id.length>100||ids.has(f.id)||typeof f.name!=='string'||f.name.length>100||typeof f.enabled!=='boolean'||!['wave','grip','bulge','pinch','flatten','twist'].includes(f.kind)||!['gaussian','linear','smooth','constant'].includes(f.falloff))throw Error('Invalid influence.');ids.add(f.id);const ranges:Record<string,number[]>={strength:[-22,22],radius:[12,160],x:[-120,120],y:[-65,65],z:[-70,70],wavelength:[24,140],phase:[0,360],angle:[-90,90]};for(const [k,r]of Object.entries(ranges)){const v=f[k as keyof Influence];if(typeof v!=='number'||!Number.isFinite(v)||v<r[0]||v>r[1])throw Error('Invalid influence '+k+'.');}}
  if(m.shapes!==undefined){if(!Array.isArray(m.shapes)||m.shapes.length>MAX_SHAPES)throw Error('Invalid shape list.');for(const shape of m.shapes){if(!shape||typeof shape.id!=='string'||!shape.id.length||shape.id.length>100||ids.has(shape.id)||typeof shape.name!=='string'||shape.name.length>100||typeof shape.enabled!=='boolean'||!['sphere','box','capsule','cylinder','torus'].includes(shape.kind)||!['union','subtract','intersect'].includes(shape.operation))throw Error('Invalid shape.');ids.add(shape.id);for(const [key,range]of Object.entries(SHAPE_LIMITS)){const value=shape[key as keyof typeof SHAPE_LIMITS];if(typeof value!=='number'||!Number.isFinite(value)||value<range[0]||value>range[1])throw Error('Invalid shape '+key+'.');}if(shape.kind==='torus'&&(shape.roundness<.05||shape.roundness>.45))throw Error('Invalid torus tube ratio.');}}
+ if(m.lattice!==undefined){const lattice=m.lattice;if(!lattice||typeof lattice!=='object'||Array.isArray(lattice)||typeof lattice.enabled!=='boolean'||!['gyroid','diamond','honeycomb','octet'].includes(lattice.kind)||!['x','y','z'].includes(lattice.axis))throw Error('Invalid lattice settings.');for(const [key,range]of Object.entries(LATTICE_LIMITS)){const value=lattice[key as keyof typeof LATTICE_LIMITS];if(typeof value!=='number'||!Number.isFinite(value)||value<range[0]||value>range[1])throw Error('Invalid lattice '+key+'.');}if(lattice.region!==undefined){const region=lattice.region;if(!region||typeof region.id!=='string'||!region.id.length||region.id.length>100||ids.has(region.id)||typeof region.name!=='string'||region.name.length>100||typeof region.enabled!=='boolean'||!['sphere','box','capsule','cylinder','torus'].includes(region.kind)||!['union','subtract','intersect'].includes(region.operation))throw Error('Invalid lattice region.');ids.add(region.id);for(const [key,range]of Object.entries(SHAPE_LIMITS)){const value=region[key as keyof typeof SHAPE_LIMITS];if(typeof value!=='number'||!Number.isFinite(value)||value<range[0]||value>range[1])throw Error('Invalid lattice region '+key+'.');}if(region.kind==='torus'&&(region.roundness<.05||region.roundness>.45))throw Error('Invalid lattice region torus tube ratio.');}}
  if(m.assets!==undefined){if(!Array.isArray(m.assets)||m.assets.length>80)throw Error('Invalid asset list.');for(const a of m.assets){if(!a||typeof a.id!=='string'||!a.id.length||a.id.length>100||ids.has(a.id)||typeof a.sourceId!=='string'||!assetCatalog.some(source=>source.id===a.sourceId)||typeof a.name!=='string'||a.name.length>100||typeof a.visible!=='boolean')throw Error('Invalid asset.');ids.add(a.id);for(const k of ['x','y','z','rx','ry','rz','scale'] as const){if(!Number.isFinite(a[k])||Math.abs(a[k])>(k==='scale'?10:1000)||(k==='scale'&&a[k]<.05))throw Error('Invalid asset transform.');}}}
  return cloneModel(m);
+}
+/** A lower bound on field scale outside the primitive, used only for safe
+ * offset padding. Independent extrusion lengths do not distort a distance
+ * field: a long circular cylinder/capsule still needs just 1 mm per mm. */
+function shapeFieldAspect(s:FormShape){
+ const hx=s.width/2,hy=s.height/2,hz=s.depth/2;
+ if(s.kind==='box')return 1;
+ if(s.kind==='cylinder')return Math.max(hx,hz)/Math.min(hx,hz);
+ if(s.kind==='capsule'){const cap=Math.min(s.roundness>0?s.roundness:Math.min(hx,hy,hz),hx,hy,hz);return Math.max(hx,cap,hz)/Math.min(hx,cap,hz);}
+ if(s.kind==='torus'){const tube=Math.min(hx,hz)*s.roundness;return Math.max(hx,hz)/Math.min(hx,hz)*Math.max(tube,hy)/Math.min(tube,hy);}
+ return Math.max(hx,hy,hz)/Math.min(hx,hy,hz);
 }
 /** Conservative modelling bounds, before/after the explicit ripple deformation. */
 export function modelBounds(m:FormModel,includeRipples=true):number[]{
  const bounds=m.baseEnabled===false?[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity]:[-m.width/2,-m.height/2,-m.depth/2,m.width/2,m.height/2,m.depth/2];let blend=0,aspect=1,hasMass=m.baseEnabled!==false;
- for(const s of m.shapes??[]){if(!s.enabled||s.operation!=='union')continue;const b=shapeBounds(s);for(let a=0;a<3;a++){bounds[a]=Math.min(bounds[a],b[a]);bounds[a+3]=Math.max(bounds[a+3],b[a+3]);}if(hasMass)blend+=s.blend/4;hasMass=true;let minimum=Math.min(s.width,s.height,s.depth)/2;if(s.kind==='capsule'&&s.roundness>0)minimum=Math.min(minimum,s.roundness);if(s.kind==='torus')minimum=Math.min(minimum,Math.min(s.width,s.depth)/2*s.roundness);aspect=Math.max(aspect,Math.max(s.width,s.height,s.depth)/(2*minimum));}
+ for(const s of m.shapes??[]){if(!s.enabled||s.operation!=='union')continue;const b=shapeBounds(s);for(let a=0;a<3;a++){bounds[a]=Math.min(bounds[a],b[a]);bounds[a+3]=Math.max(bounds[a+3],b[a+3]);}if(hasMass)blend+=s.blend/4;hasMass=true;aspect=Math.max(aspect,shapeFieldAspect(s));}
  if(m.lenses){for(const cx of lensCenters(m)){bounds[0]=Math.min(bounds[0],cx-m.lensRadius-1);bounds[3]=Math.max(bounds[3],cx+m.lensRadius+1);}bounds[1]=Math.min(bounds[1],lensY(m)-m.lensRadius-1);bounds[4]=Math.max(bounds[4],lensY(m)+m.lensRadius+1);bounds[2]=Math.min(bounds[2],m.depth/2-7);bounds[5]=Math.max(bounds[5],m.depth/2+1);}
  if(!Number.isFinite(bounds[0]))return [-4,-4,-4,4,4,4];
  let radial=0,grip=0,twist=false,flatten=false,ripple=0;for(const f of m.influences){if(!f.enabled)continue;if((f.kind==='bulge'&&f.strength>0)||(f.kind==='pinch'&&f.strength<0))radial+=Math.abs(f.strength);if(f.kind==='grip')grip+=Math.abs(f.strength);if(f.kind==='twist'&&f.strength)twist=true;if(f.kind==='flatten'&&f.strength)flatten=true;if(f.kind==='wave')ripple+=Math.abs(f.strength);}
