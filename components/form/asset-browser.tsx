@@ -30,10 +30,11 @@ type AssetBrowserProps = {
  onAddField:(kind:InfluenceKind)=>void;
  onAddShape:(kind:ShapeKind)=>void;
  onLoadStudy:()=>void;
+ onLoadStereoStudy:()=>void;
  onClose:()=>void;
 };
 
-export function AssetBrowser({onAddAsset,onAddField,onAddShape,onLoadStudy,onClose}:AssetBrowserProps){
+export function AssetBrowser({onAddAsset,onAddField,onAddShape,onLoadStudy,onLoadStereoStudy,onClose}:AssetBrowserProps){
  const [tab,setTab] = useState<'shapes'|'fields'|'assets'>('shapes');
  const [query,setQuery] = useState('');
  const q = query.trim().toLowerCase();
@@ -62,6 +63,7 @@ export function AssetBrowser({onAddAsset,onAddField,onAddShape,onLoadStudy,onClo
     <div className="worked-study-preview"><Image src="/studies/truss-bracket.png" alt="" fill unoptimized sizes="68px"/></div>
     <span><small>Worked study</small><strong>Truss bracket</strong><small>Sweeps · interfaces · cuts</small></span><ArrowUpRight size={15}/>
    </button>}
+   {tab==='shapes'&&!q&&<button className="worked-study" aria-label="Open Stereo camera frame worked study" onClick={onLoadStereoStudy}><div className="worked-study-preview"><Image src="/studies/stereo-camera-frame.png" alt="" fill unoptimized sizes="68px"/></div><span><small>Worked design</small><strong>Stereo camera frame</strong><small>Component pockets · curved bridges</small></span><ArrowUpRight size={15}/></button>}
    {tab==='shapes'&&matchingShapes.map(shape=><button className="field-insert-row" key={shape.id} onClick={()=>onAddShape(shape.id)} aria-label={'Add '+shape.name}>
     <shape.icon size={20}/><span><strong>{shape.name}</strong><small>{shape.detail}</small></span><Plus size={14}/>
    </button>)}

@@ -6,7 +6,7 @@ self.onmessage=(event)=>{
   const started=performance.now();
   const mesh=generateMesh(validateModel(event.data.model),event.data.resolution,event.data.refinement);
   if(event.data.task==='stl'||event.data.task==='audit'){
-   const check={audit:auditMesh(mesh),refinement:mesh.refinement,milliseconds:performance.now()-started};
+   const check={audit:auditMesh(mesh),refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};
    if(event.data.task==='audit'){self.postMessage({id:event.data.id,check});return}
    const stl=binarySTL(mesh);self.postMessage({id:event.data.id,stl,check},{transfer:[stl]});return;
   }

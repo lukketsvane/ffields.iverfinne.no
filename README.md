@@ -26,6 +26,9 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 - Blank construction and curved sweeps with editable control points, varying radius and flattened sections. Docked XY/XZ/YZ sketches support dragging, keyboard nudges and exact numeric editing; world-plane mirrors create independent editable copies.
 - One carefully inspected Truss bracket worked study exercises these tools from an empty document. Open it from File or Insert; its parts, curves and cuts remain editable. [Development findings](docs/truss-study-findings.md) record the observed limits and next work.
 - [Construction round journal](docs/construction-rounds.md).
+- One stereo camera frame, built from blank public construction commands, with editable camera envelopes, centre spacing, clearances and wall scale. Open **Stereo camera frame** from File or Construct, then select Stereo frame for explicit regeneration; all individual curves and cuts remain editable. [Camera design findings](docs/stereo-camera-round.md).
+- Component fit controls turn a measured envelope into a linked, real clearance cut and an optional insertion corridor. Translation, rotation and scale update the cut; direct geometric editing releases its link. Hidden reference components retain their cuts.
+- Mesh exports align a bounded sampling grid to eligible sharp box faces and report actual grid spacing. This improves detected seats and rims without claiming fit tolerance.
 - An entropy generator creates a seeded composition of blended masses and deformation fields; its result remains editable and undoable.
 - Eight editable engineering studies: Counterflow, Vortex, Halo, Strut, Confluence, Oculus, Cellular panel and Spiral. Each opens as primitive operations and analytic lattice settings, with its actual geometry shown in the project picker.
 - Gyroid and diamond sheets, honeycomb channels and octet struts with cell size, nominal thickness, thickness gradient, exterior skin and progressive cutaway controls. Optional regions retain solid mounting features outside the cellular core.
@@ -47,6 +50,9 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | `lib/shapes.ts` | Primitive fields, transforms and conservative sampling bounds |
 | `lib/construction.ts` | Validated, undoable from-scratch modelling commands shared by UI and WebMCP |
 | `lib/truss-study.ts` | One reproducible worked construction using those commands |
+| `lib/stereo-camera-study.ts` | The single parametric stereo frame and its construction recipe |
+| `lib/component-clearance.ts` | Measured component envelopes and linked cavity/insertion geometry |
+| `lib/mesh-sampling.ts` | Bounded face-aligned grid and sampling statistics |
 | `components/form/sweep-editor.tsx` | Docked planar curve sketch and precise control-point editing |
 | `lib/lattice.ts` | Constant-size periodic lattice fields, material regions, skin and cutaways |
 | `lib/project-templates.ts` | Editable engineering study construction recipes |
@@ -59,7 +65,7 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | `public/assets/components/` | Runtime component GLBs and geometry thumbnails |
 | `scripts/camera.test.mjs` | Shell/aperture, deformation and mesh-topology checks |
 
-The base mass and inserted shapes form editable implicit geometry; Merge, Cut, Intersect and Blend affect their combined mesh and STL export. Imported CAD components are reference meshes: moving them does not automatically create Boolean cavities. JSON preserves component placements. GLBs use metres and are displayed in the millimetre workspace at scale 1000.
+The base mass and inserted shapes form editable implicit geometry; Merge, Cut, Intersect and Blend affect their combined mesh and STL export. Imported CAD components remain reference meshes. **Component fit** explicitly creates a sharp bounding-envelope cut with per-side clearance; the optional link follows component placement. A measured envelope can override catalog extents while the reference CAD retains its own proportions. Neither establishes actual lens axes, internal geometry or factory fit. JSON preserves placements, measured envelopes and links. GLBs use metres and are displayed in the millimetre workspace at scale 1000.
 
 The wall parameter is the undeformed field offset; deformation can change physical wall thickness. This is a modelling application, not a manufacturing validation certificate. Native STEP originals remain the precision sources linked from the asset catalog.
 

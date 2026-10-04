@@ -129,10 +129,16 @@ function transportedSegmentField(segment:SweepSegment,x:number,y:number,z:number
  return field*ratio;
 }
 function transportedNodeField(node:SweepNode,x:number,y:number,z:number,ratio:number,best:number):number{
- // A distance *bound* may be smaller than distance to its enclosing box.
- // Do not use the ordinary capsule BVH's metric pruning for this new field.
- if(node.segments){for(const segment of node.segments)best=Math.min(best,transportedSegmentField(segment,x,y,z,ratio));return best;}
- return transportedNodeField(node.right!,x,y,z,ratio,transportedNodeField(node.left!,x,y,z,ratio,best));
+ // The affine metric stretches by [1,1/ratio] and its field is multiplied by
+ // ratio. Outside an enclosing box, ratio*box distance is a lower bound;
+ // ordinary positive box distance would over-prune this normalized field.
+ // Inside the box the negative bound stays unscaled: the normalized field's
+ // magnitude cannot exceed distance to its own surface, which the box encloses.
+ const bound=boxLowerBound(node.bounds,x,y,z),safeBound=bound<0?bound:bound*ratio;
+ if(safeBound>=best)return best;
+ if(node.segments){for(const segment of node.segments){const bound=boxLowerBound(segment.bounds,x,y,z),safeBound=bound<0?bound:bound*ratio;if(safeBound<best)best=Math.min(best,transportedSegmentField(segment,x,y,z,ratio));}return best;}
+ const left=node.left!,right=node.right!,leftFirst=boxLowerBound(left.bounds,x,y,z)<boxLowerBound(right.bounds,x,y,z);
+ best=transportedNodeField(leftFirst?left:right,x,y,z,ratio,best);return transportedNodeField(leftFirst?right:left,x,y,z,ratio,best);
 }
 function sweepNodeField(node:SweepNode,x:number,y:number,z:number,best:number):number {
  if(boxLowerBound(node.bounds,x,y,z)>=best)return best;
@@ -161,12 +167,11 @@ export type ShapeEvaluator=(x:number,y:number,z:number,limit?:number)=>number;
 export function compileShape(s:FormShape):ShapeEvaluator {
  const shape={...s},r=transform(s),originX=s.x,originY=s.y,originZ=s.z,cache=s.kind==='sweep'?sweepCache(s):undefined;
  const exact=s.kind==='box'||(s.kind==='cylinder'&&s.width===s.depth)||(s.kind==='sphere'&&s.width===s.height&&s.width===s.depth)||(s.kind==='capsule'&&s.width===s.depth&&s.width<=s.height&&(s.roundness===s.width/2||s.roundness===0));
- const transported=cache?.sectionMode==='transported'&&cache.depthRatio!==1,bounds=!transported&&(cache||exact)?shapeBounds(s):undefined;
+ const transported=cache?.sectionMode==='transported'&&cache.depthRatio!==1,bounds=(cache||exact)?shapeBounds(s):undefined;
  return (x,y,z,limit=Infinity)=>{
-  // Flattened sweeps evaluate distance in a stretched metric. Their positive
-  // outside-box lower bound remains safe; for negative limits multiply it by
-  // the maximum metric stretch before pruning interior candidates.
-  if(bounds){const bound=boxLowerBound(bounds,x,y,z),safeBound=cache&&bound<0?bound/cache.depthRatio:bound;if(safeBound>=limit)return limit;}
+  // Fixed flattened sweeps use the unnormalized stretched metric. Transported
+  // sections normalize it; their positive world-box bound needs the ratio.
+  if(bounds){const bound=boxLowerBound(bounds,x,y,z),safeBound=transported?(bound<0?bound:bound*cache!.depthRatio):cache&&bound<0?bound/cache.depthRatio:bound;if(safeBound>=limit)return limit;}
   const dx=x-originX,dy=y-originY,dz=z-originZ,px=r[0]*dx+r[3]*dy+r[6]*dz,py=r[1]*dx+r[4]*dy+r[7]*dz,pz=r[2]*dx+r[5]*dy+r[8]*dz;
   return evaluateLocalShape(shape,px,py,pz,limit,cache);
  };
