@@ -1,6 +1,6 @@
 // Actual geometry from the same editable construction commands as the app.
 // Run: node scripts/render-construction-study.mjs --resolution 134 --output /tmp/study
-// Final refined preview: node scripts/render-construction-study.mjs --resolution 220 --refined --views front,rear
+// Final refined preview: node scripts/render-construction-study.mjs --resolution 220 --refine --views front,rear
 // Requires Python with numpy/Pillow and g++ (or CXX); no browser is needed.
 import {execFileSync} from 'node:child_process';
 import {mkdir,writeFile,mkdtemp,rm} from 'node:fs/promises';
@@ -20,7 +20,7 @@ const views=argument('--views','front').split(',');
 const cameras={front:'-.55,.30,1',rear:'.50,.20,-1',orthographic:'0,0,1',side:'1,.25,.10'};
 for(const view of views)if(!cameras[view])throw Error('Unknown view '+view);
 await mkdir(output,{recursive:true});
-const refinement=process.argv.includes('--refined')?{tolerance:.12,maxPasses:2,maxTriangles:900000}:undefined;
+const refinement=process.argv.includes('--refine')||process.argv.includes('--refined')?{tolerance:.12,maxPasses:2,maxTriangles:900000}:undefined;
 const started=performance.now(),model=createTrussStudy(),mesh=generateMesh(model,resolution,refinement);
 console.log('Truss study: '+Math.round(performance.now()-started)+' ms, '+mesh.indices.length/3+' triangles at '+resolution+'.');
 if(mesh.refinement)console.log(JSON.stringify(mesh.refinement));

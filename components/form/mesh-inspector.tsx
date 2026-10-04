@@ -4,8 +4,8 @@ import type {MeshRefinementStats} from '@/lib/mesh-refinement';
 import styles from './mesh-inspector.module.css';
 
 export type MeshCheckResult={audit:MeshAudit;refinement?:MeshRefinementStats;milliseconds:number};
-type Props={refine:boolean;onRefine:(value:boolean)=>void;result:MeshCheckResult|null;busy:boolean;exporting:boolean;onCheck:()=>void;onCancel:()=>void;onExport:()=>void;error:string};
-export function MeshInspector({refine,onRefine,result,busy,exporting,onCheck,onCancel,onExport,error}:Props){
+type Props={fileURL?:string;refine:boolean;onRefine:(value:boolean)=>void;result:MeshCheckResult|null;busy:boolean;exporting:boolean;onCheck:()=>void;onCancel:()=>void;onExport:()=>void;error:string};
+export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,onCheck,onCancel,onExport,error}:Props){
  const audit=result?.audit,stats=result?.refinement;
  const clean=audit&&audit.triangles>0&&audit.finite&&audit.invalidIndices===0&&audit.degenerateTriangles===0&&audit.boundaryEdges===0&&audit.nonManifoldEdges===0&&audit.inconsistentWindingEdges===0;
  return <section className={styles.panel} aria-label="Mesh quality and connectivity">
@@ -16,6 +16,7 @@ export function MeshInspector({refine,onRefine,result,busy,exporting,onCheck,onC
   </div>
   <p className={styles.help}>{refine?'Adds triangles where curved surfaces need more detail. Small corners may still need finer sampling.':'Uses the full export grid. Refined adds local surface detail.'}</p>
   <div className={styles.actions}><button type="button" disabled={busy||exporting} onClick={onCheck}>{busy?'Checking…':'Check export mesh'}</button><button type="button" disabled={busy||exporting} onClick={onExport}>{exporting?'Exporting…':'Export STL'}</button></div>
+  {fileURL&&<a className={styles.download} href={fileURL} download="form-study-mm.stl">Download prepared STL</a>}
   {busy&&<button type="button" className={styles.cancel} onClick={onCancel}>Cancel check</button>}
   {error&&<p className={styles.error} role="alert">{error}</p>}
   {audit&&<div className={styles.report} aria-live="polite">
