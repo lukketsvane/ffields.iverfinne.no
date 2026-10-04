@@ -1,0 +1,3 @@
+"use client";
+import {useEffect} from 'react';
+export function PWA(){useEffect(()=>{if(!('serviceWorker' in navigator)||!window.isSecureContext||process.env.NODE_ENV!=='production')return;let registration:ServiceWorkerRegistration|undefined;void navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'}).then(r=>{registration=r}).catch(()=>{});const update=()=>{if(document.visibilityState==='visible')void registration?.update().catch(()=>{})};document.addEventListener('visibilitychange',update);return()=>document.removeEventListener('visibilitychange',update)},[]);return null}

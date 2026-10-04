@@ -1,0 +1,5 @@
+"use client";
+import {useEffect,useState} from 'react';
+export type Appearance='dark'|'light';
+export const PALETTES={dark:{canvas:'#252528',panel:'#1d1d20',text:'#e5e5e9',handle:'#a6b5ff',grid:'#73737d',clay:'#b9b8b3',silhouette:'#d1d1d8'},light:{canvas:'#343438',panel:'#29292c',text:'#ececee',handle:'#a9b8ff',grid:'#82828a',clay:'#bdbcb6',silhouette:'#dedee2'}};
+export function useAppearance(){const [appearance,setAppearance]=useState<Appearance>('dark');useEffect(()=>{const media=matchMedia('(prefers-color-scheme: dark)');const sync=()=>{const mode=media.matches?'dark':'light';setAppearance(mode);document.documentElement.dataset.appearance=mode;let meta=document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-live]');if(!meta){meta=document.createElement('meta');meta.name='theme-color';meta.dataset.live='true';document.head.appendChild(meta)}meta.content=PALETTES[mode].panel};sync();media.addEventListener('change',sync);return()=>media.removeEventListener('change',sync)},[]);return appearance}

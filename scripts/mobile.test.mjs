@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {TouchSession} from '../lib/touch-session.ts';
+import {perspectiveFit,orthographicHalfHeight} from '../lib/view-framing.ts';
+const point=(id,x=50,y=50)=>({id,x,y});
+test('two-finger undo survives staggered contact and release',()=>{const s=new TouchSession();s.down(point(1),0);s.down(point(2,100),50);assert.equal(s.up(1,100),null);assert.equal(s.multiple,true);assert.equal(s.up(2,140),'undo')});
+test('pinch and pan never become undo or a trailing single tap',()=>{const s=new TouchSession();s.down(point(1),0);s.down(point(2,100),20);s.move(point(1,35));assert.equal(s.up(1,150),null);s.move(point(2,120));assert.equal(s.up(2,180),null)});
+test('field movement followed by a second finger cannot become undo',()=>{const s=new TouchSession();s.down(point(1),0);s.consume();s.down(point(2,100),50);s.up(1,100);assert.equal(s.up(2,150),null)});
+test('cancel, hold, three contacts and a cancelled previous sequence do not trigger undo',()=>{for(const mode of ['cancel','hold','three']){const s=new TouchSession();s.down(point(1),0);s.down(point(2,100),20);if(mode==='three'){s.down(point(3,150),30);s.up(3,80)}s.up(1,100,mode==='cancel');assert.equal(s.up(2,mode==='hold'?600:150),null);s.down(point(4),700);assert.equal(s.up(4,780),'tap')}});
+test('portrait and landscape fit the entire form bounding sphere',()=>{const radius=100,fov=34;for(const aspect of [390/703,390/405,844/340,1]){const distance=perspectiveFit(radius,fov,aspect),halfVertical=fov*Math.PI/360,halfHorizontal=Math.atan(Math.tan(halfVertical)*aspect);assert.ok(distance*Math.sin(halfVertical)>radius);assert.ok(distance*Math.sin(halfHorizontal)>radius);const h=orthographicHalfHeight(110,48,aspect);assert.ok(h>48);assert.ok(h*aspect>110)}});

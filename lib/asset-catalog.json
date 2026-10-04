@@ -1,0 +1,122 @@
+[
+  {
+    "id": "gopro-optical-assembly",
+    "name": "HD HERO optical assembly",
+    "category": "Optics",
+    "url": "/assets/components/gopro-optical-assembly.glb",
+    "thumbnail": "/assets/components/gopro-optical-assembly.png",
+    "dimensions": [
+      22.0,
+      22.0,
+      9.0
+    ],
+    "sourceName": "GoPro HD HERO R04 CAD",
+    "sourceUrl": "https://drive.google.com/file/d/10LDHkyn32hwNJFy6USR8dGQUXUwuwoTR/view?usp=drivesdk",
+    "description": "Extracted from user-provided GoPro HD HERO R04 external CAD reconstruction; original named geometry and materials retained. Nominal exterior reference, not factory internals.",
+    "defaultRotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "gopro-shutter-button",
+    "name": "HD HERO shutter button",
+    "category": "Controls",
+    "url": "/assets/components/gopro-shutter-button.glb",
+    "thumbnail": "/assets/components/gopro-shutter-button.png",
+    "dimensions": [
+      8.0,
+      2.0,
+      7.998
+    ],
+    "sourceName": "GoPro HD HERO R04 CAD",
+    "sourceUrl": "https://drive.google.com/file/d/10LDHkyn32hwNJFy6USR8dGQUXUwuwoTR/view?usp=drivesdk",
+    "description": "Extracted from user-provided GoPro HD HERO R04 external CAD reconstruction; original named geometry and materials retained. Nominal exterior reference, not factory internals.",
+    "defaultRotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "gopro-hd-hero",
+    "name": "GoPro HD HERO reference",
+    "category": "Cameras",
+    "url": "/assets/components/gopro-hd-hero.glb",
+    "thumbnail": "/assets/components/gopro-hd-hero.png",
+    "dimensions": [
+      60.0,
+      43.2,
+      30.0
+    ],
+    "sourceName": "GoPro HD HERO R04 CAD",
+    "sourceUrl": "https://drive.google.com/file/d/10LDHkyn32hwNJFy6USR8dGQUXUwuwoTR/view?usp=drivesdk",
+    "description": "Extracted from user-provided GoPro HD HERO R04 external CAD reconstruction; original named geometry and materials retained. Nominal exterior reference, not factory internals.",
+    "defaultRotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "pololu-usb-c",
+    "name": "Pololu 3411 USB-C",
+    "category": "Connectors",
+    "url": "/assets/components/pololu-usb-c.glb",
+    "thumbnail": "/assets/components/pololu-usb-c.png",
+    "dimensions": [
+      20.32,
+      4.276,
+      13.695
+    ],
+    "sourceName": "Pololu 3411 vendor STEP",
+    "sourceUrl": "https://drive.google.com/file/d/1kZ-UMWkNIaQ_Tw-JxOQmkvYhhK_UQs-i/view?usp=drivesdk",
+    "description": "Original vendor STEP from connected Google Drive; centred preview tessellation, 0.12mm linear/0.18rad angular tolerance. Axes X,Y,Z = vendor X,Z,-Y; geometry units metres. Original STEP face colours preserved.",
+    "defaultRotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "camera-module-3",
+    "name": "Camera Module 3 Standard",
+    "category": "Cameras",
+    "url": "/assets/components/camera-module-3.glb",
+    "thumbnail": "/assets/components/camera-module-3.png",
+    "dimensions": [
+      23.862,
+      10.245,
+      25.0
+    ],
+    "sourceName": "Camera Module 3 Standard vendor STEP",
+    "sourceUrl": "https://drive.google.com/file/d/1gH-LoJwZSRJLXp_hYGSIl_wO5cADJjZE/view?usp=drivesdk",
+    "description": "Original vendor STEP from connected Google Drive; centred preview tessellation, 0.12mm linear/0.18rad angular tolerance. Axes X,Y,Z = vendor X,Z,-Y; geometry units metres. Original STEP face colours preserved.",
+    "defaultRotation": [
+      -90,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "pisugar-3-board",
+    "name": "PiSugar 3 board",
+    "category": "Power",
+    "url": "/assets/components/pisugar-3-board.glb",
+    "thumbnail": "/assets/components/pisugar-3-board.png",
+    "dimensions": [
+      65.0,
+      30.4,
+      6.0
+    ],
+    "sourceName": "PiSugar 3 vendor STEP",
+    "sourceUrl": "https://drive.google.com/file/d/1lbfak5SU2i6yuSmZHd505VeR3KK_lV-C/view?usp=drivesdk",
+    "description": "Original vendor STEP from connected Google Drive; centred preview tessellation, 0.12mm linear/0.18rad angular tolerance. Axes X,Y,Z = vendor X,Z,-Y; geometry units metres. Original STEP face colours preserved.",
+    "defaultRotation": [
+      0,
+      0,
+      0
+    ]
+  }
+]

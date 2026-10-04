@@ -1,0 +1,2 @@
+import {generateMesh,binarySTL} from './form-engine';
+self.onmessage=(event)=>{try{const mesh=generateMesh(event.data.model,event.data.resolution);if(event.data.task==='stl'){const stl=binarySTL(mesh);self.postMessage({id:event.data.id,stl},{transfer:[stl]});return}self.postMessage({id:event.data.id,mesh}, {transfer:[mesh.positions.buffer,mesh.normals.buffer,mesh.indices.buffer]})}catch(error){self.postMessage({id:event.data.id,error:String(error)})}};
