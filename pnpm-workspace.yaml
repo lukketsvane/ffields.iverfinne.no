@@ -1,2 +1,10 @@
+# Explicit dependency build policy for reproducible CI installs.
+strictDepBuilds: true
+allowBuilds:
+  esbuild: true
+  fsevents: true
+  sharp: true
+  unrs-resolver: true
+  workerd: true
 overrides:
   miniflare>sharp: 0.35.4
