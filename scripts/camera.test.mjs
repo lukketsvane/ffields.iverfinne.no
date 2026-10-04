@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEFAULT_MODEL,cloneModel,validateModel,evaluate,evaluateBase,generateMesh,lensCenters,lensY,portPosition,shutterPosition,rippleOffset,binarySTL} from '../lib/form-engine.ts';
-const m=cloneModel(DEFAULT_MODEL);
+import {CAMERA_MODEL,cloneModel,validateModel,evaluate,evaluateBase,generateMesh,lensCenters,lensY,portPosition,shutterPosition,rippleOffset,binarySTL} from '../lib/form-engine.ts';
+const m=cloneModel(CAMERA_MODEL);
 test('camera is hollow and each aperture actually opens into its cavity',()=>{
  assert.ok(evaluateBase(m,0,0,0)>0);
  assert.ok(evaluateBase(m,0,0,-m.depth/2+1)<0,'rear wall is material');

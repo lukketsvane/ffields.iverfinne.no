@@ -1,6 +1,6 @@
 # Form Fields
 
-A browser-based implicit modelling workspace for sculpting camera enclosures around real components.
+A browser-based implicit modelling workspace for exploring an entropy design language through editable masses, blends and deformation fields.
 
 ## Run
 
@@ -21,13 +21,16 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 
 ## Workspace
 
-- Hollow camera enclosure, lens apertures, shutter socket, USB-C passage and finger valleys.
-- Continuous GPU ripple deformation; Play/Pause is visible immediately on launch. Lens and mechanical regions remain fixed.
+- Grey, eye-free starter form. Camera enclosures and component references remain optional tools.
+- Editable ellipsoids, rounded boxes, capsules, cylinders and tori with ordered Merge, Cut and Intersect operations, smooth blending, transforms and duplication.
+- An entropy generator creates a seeded composition of blended masses and deformation fields; its result remains editable and undoable.
+- Continuous GPU ripple deformation starts on launch and stays active during selection, editing, undo and shape insertion. Pause is explicit.
+- Camera pose survives editing, asset loading and projection changes. Fit and named views are explicit actions.
 - User-selected canvas colour, retained on the device.
 - Docked asset/field browser. Real component assets insert into the 3D scene with position, rotation, scale and visibility controls.
 - Empty variants collection until a user saves a model. Previous shipped starter clones are removed from saved studies.
 - Undo/redo, JSON project interchange, enclosure STL, section SVG and viewport PNG export.
-- Desktop workspace and a touch layout with orbit, pinch/pan, field handles and a docked inspector.
+- Desktop workspace and a touch layout with orbit, pinch/pan, field handles and overlay sheets. Opening or resizing mobile sheets preserves the canvas and camera; the keyboard clears only the dock and sheets.
 - Device-local project persistence and offline application assets.
 
 ## Source map
@@ -35,7 +38,9 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | File | Responsibility |
 | --- | --- |
 | `app/page.tsx` | Document state, undo, selection, tools and inspector |
-| `lib/form-engine.ts` | Implicit camera field, shell/apertures, mesh generation and exports |
+| `lib/form-engine.ts` | Shape composition, deformation fields, shell/apertures, mesh generation and exports |
+| `lib/shapes.ts` | Primitive fields, transforms and conservative sampling bounds |
+| `lib/workspace-camera.ts` | Projection changes that preserve the camera pose |
 | `lib/ripple-material.ts` | GPU surface deformation and matching normal transformation |
 | `components/form/viewport.tsx` | Three.js renderer, camera/touch controls, asset loading |
 | `components/form/camera-parts.ts` | Parametric optical and shutter display assemblies |
@@ -44,13 +49,17 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | `public/assets/components/` | Runtime component GLBs and geometry thumbnails |
 | `scripts/camera.test.mjs` | Shell/aperture, deformation and mesh-topology checks |
 
-The implicit enclosure is editable geometry. Imported CAD components are reference meshes: moving them does not automatically create Boolean cavities. STL currently exports the enclosure; JSON preserves component placements. GLBs use metres and are displayed in the millimetre workspace at scale 1000.
+The base mass and inserted shapes form editable implicit geometry; Merge, Cut, Intersect and Blend affect their combined mesh and STL export. Imported CAD components are reference meshes: moving them does not automatically create Boolean cavities. JSON preserves component placements. GLBs use metres and are displayed in the millimetre workspace at scale 1000.
 
 The wall parameter is the undeformed field offset; deformation can change physical wall thickness. This is a modelling application, not a manufacturing validation certificate. Native STEP originals remain the precision sources linked from the asset catalog.
 
 ## Verification
 
-The build, model tests, touch-state tests and offline-cache tests run locally. Camera geometry was inspected using an offline renderer; the modified material/depth vertex shaders were compiled in an offscreen OpenGL context. The available cloud browser has WebGL disabled, so live GPU rendering and sustained iPhone frame rate still need hardware verification.
+The build, model tests, shape-operation tests, camera-pose tests, touch-state tests and offline-cache tests run locally with `node --test scripts/*.test.mjs`.
+
+For interaction regression checks, install `agent-browser`, serve the production `out/` directory, then run `node scripts/mobile-layout-check.mjs http://localhost:3001`. It checks fixed canvas/control bounds across sheets and menus, numeric editing, simulated keyboard clearance, phone portrait/landscape and desktop panels. Set `AGENT_BROWSER_EXECUTABLE_PATH` if Chromium is outside its default location. Headless keyboard simulation checks layout behavior; native iPhone keyboard timing and sustained GPU frame rate need device verification.
+
+Run `node scripts/entropy-workspace-check.mjs http://localhost:3001` to verify shape construction, Boolean operations, blending, Entropy generation, undo, persistence, actual ripple frames and camera composition through the visible controls.
 
 ## Development conventions
 
