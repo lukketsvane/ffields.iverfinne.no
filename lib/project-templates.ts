@@ -102,11 +102,11 @@ function spiral():FormModel {
 
 export const PROJECT_TEMPLATES:readonly ProjectTemplate[]=[
  {id:'counterflow',name:'Counterflow',category:'Heat exchange',description:'Four ports. Graded gyroid core. Open vessel section.',model:counterflow()},
- {id:'vortex',name:'Vortex',category:'Rotational geometry',description:'Six swept vanes connect a solid hub and cellular rim.',model:vortex()},
+ {id:'vortex',name:'Vortex',category:'Rotational geometry',description:'Cellular swept vanes connect a raised hub and continuous rim.',model:vortex()},
  {id:'halo',name:'Halo',category:'Cellular liner',description:'A continuous dome around a deep honeycomb liner.',model:halo()},
- {id:'strut',name:'Strut',category:'Graded structure',description:'Mounting eyes and load ribs frame an open diagonal truss.',model:strut()},
+ {id:'strut',name:'Strut',category:'Graded structure',description:'Mounting bores and load ribs frame an open diagonal truss.',model:strut()},
  {id:'confluence',name:'Confluence',category:'Branching passages',description:'Three flanged passages meet in a porous central chamber.',model:confluence()},
- {id:'oculus',name:'Oculus',category:'Porous shell',description:'An open lattice orb with solid polar collars and belt.',model:oculus()},
+ {id:'oculus',name:'Oculus',category:'Porous shell',description:'An open lattice orb with polar collars and an equatorial band.',model:oculus()},
  {id:'auxetic',name:'Cellular panel',category:'Cell architecture',description:'A framed honeycomb panel with graded cell walls.',model:auxetic()},
  {id:'spiral',name:'Spiral',category:'Flow geometry',description:'A coiled internal partition meets a tangential outlet.',model:spiral()},
 ];
