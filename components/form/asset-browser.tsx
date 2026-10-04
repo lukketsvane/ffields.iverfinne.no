@@ -1,12 +1,14 @@
 "use client";
 
 import {useState} from 'react';
-import {Search,Plus,Waves,Hand,Expand,Shrink,Square,Rotate3D,X,ChevronLeft,Circle,Box,Pill,Cylinder,Donut} from 'lucide-react';
+import Image from 'next/image';
+import {Search,Plus,Waves,Hand,Expand,Shrink,Square,Rotate3D,X,ChevronLeft,Circle,Box,Pill,Cylinder,Donut,Spline,ArrowUpRight} from 'lucide-react';
 import {ASSET_CATALOG,type AssetDefinition} from '@/lib/assets';
 import type {InfluenceKind} from '@/lib/form-engine';
 import type {ShapeKind} from '@/lib/shapes';
 
 const shapes = [
+ {id:'sweep',name:'Sweep',detail:'Sketch a curved path · vary its thickness',icon:Spline},
  {id:'sphere',name:'Sphere',detail:'Organic volume · stretch and blend',icon:Circle},
  {id:'box',name:'Box',detail:'Rounded block · merge or carve',icon:Box},
  {id:'capsule',name:'Capsule',detail:'Soft bridge · join neighbouring forms',icon:Pill},
@@ -27,10 +29,11 @@ type AssetBrowserProps = {
  onAddAsset:(asset:AssetDefinition)=>void;
  onAddField:(kind:InfluenceKind)=>void;
  onAddShape:(kind:ShapeKind)=>void;
+ onLoadStudy:()=>void;
  onClose:()=>void;
 };
 
-export function AssetBrowser({onAddAsset,onAddField,onAddShape,onClose}:AssetBrowserProps){
+export function AssetBrowser({onAddAsset,onAddField,onAddShape,onLoadStudy,onClose}:AssetBrowserProps){
  const [tab,setTab] = useState<'shapes'|'fields'|'assets'>('shapes');
  const [query,setQuery] = useState('');
  const q = query.trim().toLowerCase();
@@ -55,6 +58,10 @@ export function AssetBrowser({onAddAsset,onAddField,onAddShape,onClose}:AssetBro
    <input aria-label="Search assets and fields" value={query} placeholder="Search shapes, fields, assets" onChange={event=>setQuery(event.target.value)}/>
   </label>
   <div className="asset-results">
+   {tab==='shapes'&&!q&&<button className="worked-study" aria-label="Open Truss bracket worked study" onClick={onLoadStudy}>
+    <div className="worked-study-preview"><Image src="/studies/truss-bracket.png" alt="" fill unoptimized sizes="68px"/></div>
+    <span><small>Worked study</small><strong>Truss bracket</strong><small>Sweeps · interfaces · cuts</small></span><ArrowUpRight size={15}/>
+   </button>}
    {tab==='shapes'&&matchingShapes.map(shape=><button className="field-insert-row" key={shape.id} onClick={()=>onAddShape(shape.id)} aria-label={'Add '+shape.name}>
     <shape.icon size={20}/><span><strong>{shape.name}</strong><small>{shape.detail}</small></span><Plus size={14}/>
    </button>)}

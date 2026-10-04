@@ -7,6 +7,7 @@ import {assetDefinition} from '@/lib/assets';
 import {toast} from 'sonner';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {FormModel,MeshData,generateMesh,evaluateBase,fieldStrength,sectionContours,clamp,withoutRipples} from '@/lib/form-engine';
+import {compileShape} from '@/lib/shapes';
 import {Appearance,PALETTES} from '@/lib/appearance';
 import {TouchSession} from '@/lib/touch-session';
 import {createRippleMaterial} from '@/lib/ripple-material';
@@ -74,7 +75,7 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
    resizeWorkspaceProjection(camera,ortho,controls.target,w,h,mobileLayout.matches);
    invalidate()
   };
-  const apply=(data:MeshData)=>{if(disposed)return;plane.position.y=data.bounds[1]-.8;const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));geometry.setIndex(new THREE.BufferAttribute(data.indices,1));geometry.computeBoundingSphere();body.geometry.dispose();body.geometry=geometry;rt.data=data;styleBody(rt,latest.current);setBusy(false);setError(data.indices.length?'':'These fields leave no solid. Reduce the pinch or restore a variant.');latest.current.onMetrics(data);if(!fitted&&data.indices.length){fitted=true;resize();fit()}invalidate()};
+  const apply=(data:MeshData)=>{if(disposed)return;plane.position.y=data.bounds[1]-.8;const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));geometry.setIndex(new THREE.BufferAttribute(data.indices,1));geometry.computeBoundingSphere();body.geometry.dispose();body.geometry=geometry;rt.data=data;styleBody(rt,latest.current);setBusy(false);setError(data.indices.length||(latest.current.model.baseEnabled===false&&!latest.current.model.shapes?.some(s=>s.enabled&&s.operation==='union'))?'':'These fields leave no solid. Reduce the pinch or restore a variant.');latest.current.onMetrics(data);if(!fitted&&data.indices.length){fitted=true;resize();fit()}invalidate()};
   const submit=(job:Job)=>{if(document.hidden){rt.pending=job;return}if(rt.worker){if(rt.inFlight)rt.pending=job;else{rt.inFlight=true;rt.worker.postMessage(job)}}else apply(generateMesh(job.model,Math.min(job.resolution,112)))};
   const rt:Runtime={renderer,scene,camera,ortho,controls,body,actors,fields,sectionGroup,ground,imports,instances:new Map(),request:0,inFlight:false,touching:false,apply,invalidate,fit,submit,quality,phase,syncRipple,syncCamera,syncSection};runtime.current=rt;
   const observer=new ResizeObserver(resize);observer.observe(el);resize();
@@ -117,7 +118,7 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
  },[props.model.assets,assetRetry]);
  useEffect(()=>{const r=runtime.current;if(!r)return;clearGroup(r.fields);for(const f of props.model.influences){if(!f.enabled)continue;const selected=f.id===props.selected;if(!selected&&props.view!=='field')continue;const color=selected?PALETTES[props.appearance].handle:PALETTES[props.appearance].grid,g=new THREE.Group();g.position.set(f.x,f.y,f.z+2);const points:THREE.Vector3[]=[];for(let i=0;i<=72;i++){const a=i/72*Math.PI*2;points.push(new THREE.Vector3(Math.cos(a)*f.radius,Math.sin(a)*f.radius,0))}const circle=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineDashedMaterial({color,transparent:true,opacity:.5,dashSize:3,gapSize:3,depthTest:false}));circle.computeLineDistances();circle.renderOrder=9;g.add(circle);const dot=new THREE.Mesh(new THREE.SphereGeometry(2.5,12,10),new THREE.MeshBasicMaterial({color,depthTest:false}));dot.renderOrder=10;g.add(dot);r.fields.add(g)}r.invalidate()},[props.model.influences,props.selected,props.view,props.appearance]);
  useEffect(()=>{const r=runtime.current;if(!r)return;r.syncSection();r.invalidate()},[props.view,props.model,props.section,props.appearance,props.editing,props.playing]);
- return <div className="viewport-mount" ref={mount} aria-label="Interactive form viewport">{busy&&<span className="evaluating" aria-label="Evaluating"/>}{error&&<div className="viewport-error" role="alert">{error}</div>}</div>
+ return <div className="viewport-mount" ref={mount} aria-label="Interactive form viewport">{busy&&<span className="evaluating" aria-label="Evaluating"/>}{error&&<div className="viewport-error" role="alert">{error}</div>}{!error&&props.model.baseEnabled===false&&!props.model.shapes?.some(s=>s.enabled&&s.operation==='union')&&<div className="viewport-empty"><strong>Start a construction</strong><span>Insert a sweep or a shape to begin.</span></div>}</div>
 });
 function clearGroup(group:THREE.Group){for(const obj of [...group.children]){obj.traverse(o=>{const m=o as THREE.Mesh;m.geometry?.dispose();if(m.material){if(Array.isArray(m.material))m.material.forEach(x=>x.dispose());else m.material.dispose()}});group.remove(obj)}}
 function styleBody(r:{body:THREE.Mesh},p:Props){
@@ -130,10 +131,11 @@ function styleBody(r:{body:THREE.Mesh},p:Props){
  if(pos&&p.view!=='silhouette'){
   const ao=(r.body.geometry.userData.ao??new Float32Array(pos.count)) as Float32Array,aoReady=!!r.body.geometry.userData.ao;
   const colors=new Float32Array(pos.count*3),c=new THREE.Color(),lo=new THREE.Color(0x777980),hi=new THREE.Color(palette.handle);
+  const compiledShapes=!aoReady&&p.view==='solid'?(p.model.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity):undefined;
   for(let i=0;i<pos.count;i++){
    const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
    if(p.view==='field')c.copy(lo).lerp(hi,clamp(fieldStrength(p.model,x,y,z)/22,0,1));
-   else {let occ=0;if(!aoReady){for(const d of [2,5,10]){const distance=evaluateBase(p.model,x+norm.getX(i)*d,y+norm.getY(i)*d,z+norm.getZ(i)*d);occ+=Math.max(0,1-distance/d);}
+   else {let occ=0;if(!aoReady){for(const d of [2,5,10]){const distance=evaluateBase(p.model,x+norm.getX(i)*d,y+norm.getY(i)*d,z+norm.getZ(i)*d,compiledShapes);occ+=Math.max(0,1-distance/d);}
     ao[i]=1-clamp(occ*.1,0,.2);}
     const shade=ao[i];c.setRGB(shade,shade,shade);}
    colors.set([c.r,c.g,c.b],i*3);

@@ -144,10 +144,14 @@ try{
     assert.equal(shape.kind,'box');assert.equal(readModel().shapes.length,2);
     stableCamera(composed,'add Box');playing('add Box');
 
+    run('fill','input[aria-label="Shape name"]','Cancelled rename');run('press','Escape');frames();
+    assert.equal(readModel().shapes.find(item=>item.id===shape.id).name,shape.name,'Escape cancels the shape rename');
+    assert.equal(evaluate(`document.querySelector('input[aria-label="Shape name"]').value`),shape.name,'cancelled name resets in the inspector');
+    stableCamera(composed,'cancel shape rename');playing('cancel shape rename');
+
     for(const [label,operation] of fullCheck?[['Merge','union'],['Cut','subtract'],['Intersect','intersect']]:[['Cut','subtract']]){
-      click('[aria-label="Shape operation"]');
-      run('find','role','option','click','--name',label);
-      run('wait','--fn',`!document.querySelector('[role="listbox"]')`);settled();
+      run('find','role','button','click','--name',label);
+      frames();settled();
       assert.equal(readModel().shapes.find(item=>item.id===shape.id).operation,operation);
       stableCamera(composed,`${label} Box`);playing(`${label} Box`);
     }
