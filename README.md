@@ -24,6 +24,8 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 - Grey, eye-free starter form. Camera enclosures and component references remain optional tools.
 - Editable ellipsoids, rounded boxes, capsules, cylinders and tori with ordered Merge, Cut and Intersect operations, smooth blending, transforms and duplication.
 - An entropy generator creates a seeded composition of blended masses and deformation fields; its result remains editable and undoable.
+- Eight editable engineering studies: Counterflow, Vortex, Halo, Strut, Confluence, Oculus, Cellular panel and Spiral. Each opens as primitive operations and analytic lattice settings, with its actual geometry shown in the project picker.
+- Gyroid and diamond sheets, honeycomb channels and octet struts with cell size, nominal thickness, thickness gradient, exterior skin and progressive cutaway controls. Optional regions retain solid mounting features outside the cellular core.
 - Continuous GPU ripple deformation starts on launch and stays active during selection, editing, undo and shape insertion. Pause is explicit.
 - Camera pose survives editing, asset loading and projection changes. Fit and named views are explicit actions.
 - User-selected canvas colour, retained on the device.
@@ -40,6 +42,8 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | `app/page.tsx` | Document state, undo, selection, tools and inspector |
 | `lib/form-engine.ts` | Shape composition, deformation fields, shell/apertures, mesh generation and exports |
 | `lib/shapes.ts` | Primitive fields, transforms and conservative sampling bounds |
+| `lib/lattice.ts` | Constant-size periodic lattice fields, material regions, skin and cutaways |
+| `lib/project-templates.ts` | Editable engineering study construction recipes |
 | `lib/workspace-camera.ts` | Projection changes that preserve the camera pose |
 | `lib/ripple-material.ts` | GPU surface deformation and matching normal transformation |
 | `components/form/viewport.tsx` | Three.js renderer, camera/touch controls, asset loading |
@@ -52,6 +56,8 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 The base mass and inserted shapes form editable implicit geometry; Merge, Cut, Intersect and Blend affect their combined mesh and STL export. Imported CAD components are reference meshes: moving them does not automatically create Boolean cavities. JSON preserves component placements. GLBs use metres and are displayed in the millimetre workspace at scale 1000.
 
 The wall parameter is the undeformed field offset; deformation can change physical wall thickness. This is a modelling application, not a manufacturing validation certificate. Native STEP originals remain the precision sources linked from the asset catalog.
+
+Lattices are part of the same implicit geometry used by the viewport, sections and STL export. When enabled, a lattice replaces the hollow-shell operation and uses its own exterior skin; disabling it restores the composed solid or selected shell. Existing bores and apertures remain open. Gradient changes nominal thickness without shifting the cell phase. Gyroid and diamond values are calibrated implicit fields rather than exact signed distances; displayed thickness is approximate. Meshes sample a finite grid, so very thin walls or strong gradients need inspection at export resolution. Template names describe geometric studies: no thermal, fluid, structural, impact or auxetic simulation is performed.
 
 ## Verification
 

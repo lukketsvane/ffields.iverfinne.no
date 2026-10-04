@@ -4,7 +4,7 @@ import type {FormModel} from './form-engine.ts';
 /** Keep the mass document and copy fields without colliding with any object ID. */
 export function mixModelFields(mass:FormModel,fields:FormModel):FormModel {
  const mixed=cloneModel(mass),copied=cloneModel(fields).influences;
- const used=new Set(['body','regions','enclosure','canvas',...(mixed.shapes??[]).map(s=>s.id),...(mixed.assets??[]).map(a=>a.id)]);
+ const used=new Set(['body','regions','enclosure','canvas','lattice',...(mixed.shapes??[]).map(s=>s.id),...(mixed.assets??[]).map(a=>a.id),...(mixed.lattice?.region?[mixed.lattice.region.id]:[])]);
  // A renamed field must not take the original ID of another copied field.
  const reserved=new Set([...used,...copied.map(f=>f.id)]);
  mixed.influences=copied.map(field=>{

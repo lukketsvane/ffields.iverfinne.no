@@ -8,6 +8,8 @@ The viewport belongs to the designer. Opening tools, inserting objects, changing
 
 Delivered mobile foundation: system-driven graphite themes, one canvas gesture owner, stable framing while editing, selection-specific inspector, coarse previews during edits and refinement after release, rendering only on change, background save, offline static shell, worker mesh export.
 
+Delivered project studies: eight editable primitive-and-lattice recipes inspired by the supplied cellular engineering references. Analytic gyroid, diamond, honeycomb and octet fields compose with the authored exterior, optional material domain, exterior skin and cutaway before enclosure apertures. Density gradients vary thickness while keeping periodic cells aligned. JSON, section and STL evaluations retain this geometry; all studies remain undoable and editable. These are geometric demonstrations without computed engineering performance. Finite grid meshing and nominal implicit thickness remain the practical limits, especially with thin cells or extreme gradients. Primitive-specific field bounds avoid wasting sampling resolution on the independent length of an extrusion.
+
 Next engine work, informed by official nTop documentation and the supplied architecture prototype:
 
 1. Central parameter schema: bounds, units, step, default, validation and sweep metadata. Preserve existing millimetres and imported studies.
