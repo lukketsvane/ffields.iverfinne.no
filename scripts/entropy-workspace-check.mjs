@@ -1,5 +1,7 @@
 // Real UI regression against a served production build:
 // node scripts/entropy-workspace-check.mjs http://localhost:3001
+// To check orientation-specific behavior after the full portrait pass:
+// node scripts/entropy-workspace-check.mjs http://localhost:3001 --landscape-only --focused
 // Requires agent-browser and Chromium; screenshots go to FFIELDS_SCREENSHOTS.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -9,6 +11,8 @@ import {join} from 'node:path';
 const url=process.argv[2]??'http://localhost:3001';
 const output=process.env.FFIELDS_SCREENSHOTS??'/tmp/ffields-entropy-workspace';
 const session='ffields-entropy-workspace';
+const landscapeOnly=process.argv.includes('--landscape-only');
+const focused=process.argv.includes('--focused');
 mkdirSync(output,{recursive:true});
 function run(...args){
   const text=execFileSync('agent-browser',['--session',session,'--json',...args],{
@@ -93,9 +97,13 @@ const observeWorkspace=`(()=>{
 
 try{
   run('set','device','iPhone 15');
-  for(const [width,height] of [[390,703],[844,390]]){
+  for(const [width,height] of landscapeOnly?[[844,390]]:[[390,703],[844,390]]){
+    const fullCheck=!focused||width<600;
     run('set','viewport',String(width),String(height));
     run('open',url);
+    run('wait','.viewport-mount canvas');
+    settled();
+    run('wait','[aria-label="Saved on this device"]');
     evaluate(`localStorage.removeItem('form-sketchbook-v1')`);
     run('reload');
     // CLI resizing/navigation resets touch; landscape layout depends on pointer:coarse.
@@ -113,14 +121,13 @@ try{
     run('screenshot',join(output,`fresh-grey-${width}x${height}.png`));
 
     const beforeOrbit=camera();
-    evaluate(`window.__ffieldsPointerEvents=[];for(const type of ['pointerdown','pointermove','pointerup'])document.addEventListener(type,event=>window.__ffieldsPointerEvents.push({type:event.type,target:event.target.tagName,pointer:event.pointerType,x:event.clientX,y:event.clientY}),{capture:true})`);
     await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:140,y:235,id:1}]});
     await cdp('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:180,y:255,id:1}]});
     await cdp('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     frames();
     const composed=camera(),bounds=sceneBounds();
-    console.log(`Orbit ${width}x${height}`,evaluate('window.__ffieldsPointerEvents'));
     assert.ok(composed.view.some((value,i)=>Math.abs(value-beforeOrbit.view[i])>.01),'manual orbit changes rendered camera');
+    console.log(`PASS ${width}x${height}: fresh grey study, no camera apertures, active ripple and real touch orbit`);
     for(const label of ['Parameters','Model','Insert shape, asset or field']){
       click(mobileButton(label));settled();
       stableCamera(composed,`open ${label}`);playing(`open ${label}`);
@@ -137,7 +144,7 @@ try{
     assert.equal(shape.kind,'box');assert.equal(readModel().shapes.length,2);
     stableCamera(composed,'add Box');playing('add Box');
 
-    for(const [label,operation] of [['Merge','union'],['Cut','subtract'],['Intersect','intersect']]){
+    for(const [label,operation] of fullCheck?[['Merge','union'],['Cut','subtract'],['Intersect','intersect']]:[['Cut','subtract']]){
       click('[aria-label="Shape operation"]');
       run('find','role','option','click','--name',label);
       run('wait','--fn',`!document.querySelector('[role="listbox"]')`);settled();
@@ -147,9 +154,11 @@ try{
     run('fill','input[aria-label="Blend radius value"]','9');run('press','Enter');settled();
     assert.equal(readModel().shapes.find(item=>item.id===shape.id).blend,9);
     stableCamera(composed,'edit Blend');playing('edit Blend');
-    click(mobileButton('Undo'));settled();
-    assert.notEqual(readModel().shapes.find(item=>item.id===shape.id).blend,9);
-    stableCamera(composed,'undo Blend');playing('undo Blend');
+    if(fullCheck){
+      click(mobileButton('Undo'));settled();
+      assert.notEqual(readModel().shapes.find(item=>item.id===shape.id).blend,9);
+      stableCamera(composed,'undo Blend');playing('undo Blend');
+    }
 
     // Sample frames after editing and undo: an active button alone cannot prove animation.
     evaluate(`window.__ffieldsFrame=document.querySelector('.viewport-mount canvas').toDataURL()`);
@@ -169,20 +178,24 @@ try{
     assert.ok(readModel().shapes.length>=3,'Entropy generates several shapes');
     stableCamera(composed,'generate Entropy');playing('generate Entropy');
     run('screenshot',join(output,`generated-entropy-${width}x${height}.png`));
-    click(mobileButton('Undo'));settled();
-    assert.equal(readModel().shapes.length,2,'undo restores the edited Sphere and Box');
-    assert.equal(readModel().shapes.at(-1).id,shape.id);
-    stableCamera(composed,'undo Entropy');playing('undo Entropy');
+    if(fullCheck){
+      click(mobileButton('Undo'));settled();
+      assert.equal(readModel().shapes.length,2,'undo restores the edited Sphere and Box');
+      assert.equal(readModel().shapes.at(-1).id,shape.id);
+      stableCamera(composed,'undo Entropy');playing('undo Entropy');
+    }
     run('screenshot',join(output,`entropy-${width}x${height}.png`));
     assert.deepEqual(run('errors').errors,[]);
-    run('wait','--fn',`JSON.parse(localStorage.getItem('form-sketchbook-v1'))?.model?.shapes?.at(-1)?.id===${JSON.stringify(shape.id)}`);
-    run('reload');
-    await cdp('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
-    assert.equal(evaluate(`matchMedia('(pointer:coarse)').matches`),true,'restored mobile pointer media query');
-    run('wait','.viewport-mount canvas');settled();
-    assert.equal(readModel().shapes.length,2,'shapes survive reload');
-    assert.equal(readModel().shapes.at(-1).id,shape.id);
-    playing('restore saved shapes');
-    console.log(`PASS ${width}x${height}: shapes, Merge/Cut/Intersect, blend, Entropy, undo, persistence, continuous ripple and camera composition`);
+    if(fullCheck){
+      run('wait','--fn',`JSON.parse(localStorage.getItem('form-sketchbook-v1'))?.model?.shapes?.at(-1)?.id===${JSON.stringify(shape.id)}`);
+      run('reload');
+      await cdp('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
+      assert.equal(evaluate(`matchMedia('(pointer:coarse)').matches`),true,'restored mobile pointer media query');
+      run('wait','.viewport-mount canvas');settled();
+      assert.equal(readModel().shapes.length,2,'shapes survive reload');
+      assert.equal(readModel().shapes.at(-1).id,shape.id);
+      playing('restore saved shapes');
+      console.log(`PASS ${width}x${height}: shapes, Merge/Cut/Intersect, blend, Entropy, undo, persistence, continuous ripple and camera composition`);
+    }else console.log(`PASS ${width}x${height}: sheets, shape insert, operation/blend reachability, Section animation, Entropy and camera roundtrip`);
   }
 }finally{cdpSocket?.close();run('close')}

@@ -23,6 +23,7 @@ export function Relationships({model,selected,onSelect,onExport}:RelationshipsPr
  // Route mass inputs around the field column to keep each operation visible.
  const massWire = (y:number)=>`M158,${y} L176,${y} L176,12 L374,12 L374,${resultY} L390,${resultY}`;
  const enabledForms = shapes.filter(shape=>shape.enabled).length+(model.baseEnabled!==false?1:0);
+ const bodySelection = model.lenses?'regions':'body';
 
  return <div className="graph-scroller"><div className="graph-surface" style={{height}}>
   <svg className="graph-wires" width="930" height={height} aria-hidden="true">
@@ -44,12 +45,12 @@ export function Relationships({model,selected,onSelect,onExport}:RelationshipsPr
    <span className="graph-card-title"><Icon/>{field.kind==='wave'?'Ripple':field.kind.charAt(0).toUpperCase()+field.kind.slice(1)}</span>
    <span className="graph-card-value">{field.strength.toFixed(1)} {field.kind==='twist'?'°':'mm'} · {field.falloff==='constant'?'Global':field.radius+' mm'}{field.enabled?'':' · Off'}</span>
   </button>;})}
-  <button className={'graph-card '+(selected==='regions'?'active':'')} style={{left:390,top:middle}} onClick={()=>onSelect('regions')} aria-label="Select body result">
+  <button className={'graph-card '+(selected===bodySelection?'active':'')} style={{left:390,top:middle}} onClick={()=>onSelect(bodySelection)} aria-label="Select body result">
    <span className="graph-card-title">{model.protect?<LockKeyhole/>:<Move/>}Body</span>
    <span className="graph-card-value">{model.lenses?(model.protect?'Fixed openings':'Lens openings'):shapes.length?`${enabledForms} forms · Deformed mass`:'Deformed mass'}</span>
   </button>
   <button className={'graph-card '+(selected==='enclosure'?'active':'')} style={{left:574,top:middle}} onClick={()=>onSelect('enclosure')}>
-   <span className="graph-card-title"><Layers/>Enclosure</span>
+   <span className="graph-card-title"><Layers/>Shell</span>
    <span className="graph-card-value">{model.shell?model.wall.toFixed(1)+' mm shell':'Solid'}{model.usb?' · USB-C':''}</span>
   </button>
   <button className="graph-card output" style={{left:764,top:middle}} onClick={onExport} aria-label="Export mesh">
