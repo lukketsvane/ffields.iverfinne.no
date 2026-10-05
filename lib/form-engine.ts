@@ -135,12 +135,15 @@ export function modelBounds(m:FormModel,includeRipples=true):number[]{
  bounds[0]-=grip*.12;bounds[3]+=grip*.12;
  for(let a=0;a<3;a++){const margin=4+(a===2&&includeRipples?ripple:0);bounds[a]-=margin;bounds[a+3]+=margin;}return bounds;
 }
-export function generateMesh(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions):MeshData {m=resolveAttachments(m);const compiledShapes=(m.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity),field=(x:number,y:number,z:number)=>evaluateBase(m,x,y,z,compiledShapes);const b=modelBounds(m,false),{coordinates,sampling}=createMeshSamplingGrid(m,b,resolution,samplingOptions),nx=coordinates[0].length-1,ny=coordinates[1].length-1,nz=coordinates[2].length-1;const row=nx+1,layer=row*(ny+1);const values=new Float32Array(layer*(nz+1));for(let k=0;k<=nz;k++)for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){const v=field(coordinates[0][i],coordinates[1][j],coordinates[2][k]);values[k*layer+j*row+i]=Math.abs(v)<1e-7?1e-7:v}const positions:number[]=[],normals:number[]=[],indices:number[]=[];const edges=new Map<string,number>();const offsets=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];const tets=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];const ids=new Array<number>(8),pts=new Array<number[]>(8);let volume=0;let direction=[0,0,1];
+/** One deterministic mesher shared by workers, synchronous exports and the
+ * cooperative preview fallback. Steps yield between bounded sample/cell groups;
+ * they never change the grid, field roots, topology or output ordering. */
+function* meshSteps(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,rootRefinementPasses=24):Generator<void,MeshData,void> {m=resolveAttachments(m);const compiledShapes=(m.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity),field=(x:number,y:number,z:number)=>evaluateBase(m,x,y,z,compiledShapes);const b=modelBounds(m,false),{coordinates,sampling}=createMeshSamplingGrid(m,b,resolution,samplingOptions),nx=coordinates[0].length-1,ny=coordinates[1].length-1,nz=coordinates[2].length-1;const row=nx+1,layer=row*(ny+1);const values=new Float32Array(layer*(nz+1));let sampled=0;yield;for(let k=0;k<=nz;k++)for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){const v=field(coordinates[0][i],coordinates[1][j],coordinates[2][k]);values[k*layer+j*row+i]=Math.abs(v)<1e-7?1e-7:v;if(++sampled%128===0)yield}const positions:number[]=[],normals:number[]=[],indices:number[]=[];const edges=new Map<string,number>();const offsets=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];const tets=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];const ids=new Array<number>(8),pts=new Array<number[]>(8);let volume=0;let direction=[0,0,1];
 function vertex(a:number,b:number){const ia=ids[a],ib=ids[b],key=ia<ib?ia+':'+ib:ib+':'+ia;const found=edges.get(key);if(found!==undefined)return found;const va=values[ia],vb=values[ib],pa=pts[a],pb=pts[b];let t=va/(va-vb),lo=0,hi=1,vlo=va,vhi=vb,x=pa[0]+(pb[0]-pa[0])*t,y=pa[1]+(pb[1]-pa[1])*t,z=pa[2]+(pb[2]-pa[2])*t;
 // Refine against the actual field while remaining on the shared tetrahedron
 // edge. This improves circular bores and sharp CSG seams without moving a
 // vertex off its sampling edge, changing topology, or defining a new surface.
-for(let refine=0;refine<24;refine++){
+for(let refine=0;refine<rootRefinementPasses;refine++){
  const value=field(x,y,z);if(!Number.isFinite(value)||Math.abs(value)<1e-5)break;
  if((value<0)===(vlo<0)){lo=t;vlo=value}else{hi=t;vhi=value}
  // Hard CSG corners can leave regula falsi stuck against one endpoint. Use
@@ -152,10 +155,10 @@ for(let refine=0;refine<24;refine++){
 }
 const n=positions.length/3;positions.push(x,y,z);const e=.06,dx=field(x+e,y,z)-field(x-e,y,z),dy=field(x,y+e,z)-field(x,y-e,z),dz=field(x,y,z+e)-field(x,y,z-e),len=Math.hypot(dx,dy,dz)||1;normals.push(dx/len,dy/len,dz/len);edges.set(key,n);return n}
 function triangle(a:number,b:number,c:number){const ax=positions[a*3],ay=positions[a*3+1],az=positions[a*3+2],ux=positions[b*3]-ax,uy=positions[b*3+1]-ay,uz=positions[b*3+2]-az,vx=positions[c*3]-ax,vy=positions[c*3+1]-ay,vz=positions[c*3+2]-az;const cx=uy*vz-uz*vy,cy=uz*vx-ux*vz,cz=ux*vy-uy*vx;if(cx*direction[0]+cy*direction[1]+cz*direction[2]<0){const temp=b;b=c;c=temp}indices.push(a,b,c);const b0=b*3,c0=c*3;volume+=(ax*(positions[b0+1]*positions[c0+2]-positions[b0+2]*positions[c0+1])+ay*(positions[b0+2]*positions[c0]-positions[b0]*positions[c0+2])+az*(positions[b0]*positions[c0+1]-positions[b0+1]*positions[c0]))/6}
-for(let k=0;k<nz;k++)for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){let inside=0;for(let c=0;c<8;c++){const o=offsets[c];ids[c]=(k+o[2])*layer+(j+o[1])*row+i+o[0];pts[c]=[coordinates[0][i+o[0]],coordinates[1][j+o[1]],coordinates[2][k+o[2]]];if(values[ids[c]]<0)inside++}if(inside===0||inside===8)continue;for(const tet of tets){const inn=tet.filter(c=>values[ids[c]]<0),out=tet.filter(c=>values[ids[c]]>=0);if(!inn.length||!out.length)continue;direction=[0,1,2].map(axis=>out.reduce((sum,c)=>sum+pts[c][axis],0)/out.length-inn.reduce((sum,c)=>sum+pts[c][axis],0)/inn.length);if(inn.length===1)triangle(vertex(inn[0],out[0]),vertex(inn[0],out[1]),vertex(inn[0],out[2]));else if(inn.length===3)triangle(vertex(out[0],inn[0]),vertex(out[0],inn[1]),vertex(out[0],inn[2]));else if(inn.length===2){const a=vertex(inn[0],out[0]),b=vertex(inn[0],out[1]),c=vertex(inn[1],out[0]),d=vertex(inn[1],out[1]);triangle(a,b,c);triangle(b,d,c)}}}// Apply the same explicit deformation used by the GPU, including its normal Jacobian.
+let visited=0;for(let k=0;k<nz;k++)for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){if(++visited%32===0)yield;let inside=0;for(let c=0;c<8;c++){const o=offsets[c];ids[c]=(k+o[2])*layer+(j+o[1])*row+i+o[0];pts[c]=[coordinates[0][i+o[0]],coordinates[1][j+o[1]],coordinates[2][k+o[2]]];if(values[ids[c]]<0)inside++}if(inside===0||inside===8)continue;for(const tet of tets){const inn=tet.filter(c=>values[ids[c]]<0),out=tet.filter(c=>values[ids[c]]>=0);if(!inn.length||!out.length)continue;direction=[0,1,2].map(axis=>out.reduce((sum,c)=>sum+pts[c][axis],0)/out.length-inn.reduce((sum,c)=>sum+pts[c][axis],0)/inn.length);if(inn.length===1)triangle(vertex(inn[0],out[0]),vertex(inn[0],out[1]),vertex(inn[0],out[2]));else if(inn.length===3)triangle(vertex(out[0],inn[0]),vertex(out[0],inn[1]),vertex(out[0],inn[2]));else if(inn.length===2){const a=vertex(inn[0],out[0]),b=vertex(inn[0],out[1]),c=vertex(inn[1],out[0]),d=vertex(inn[1],out[1]);triangle(a,b,c);triangle(b,d,c)}}}// Apply the same explicit deformation used by the GPU, including its normal Jacobian.
 if(m.influences.some(f=>f.kind==='wave'&&f.enabled)){
- for(let i=0;i<positions.length;i+=3){const x=positions[i],y=positions[i+1],z=positions[i+2],e=.04,d=rippleOffset(m,x,y,z),dx=(rippleOffset(m,x+e,y,z)-rippleOffset(m,x-e,y,z))/(2*e),dy=(rippleOffset(m,x,y+e,z)-rippleOffset(m,x,y-e,z))/(2*e),dz=(rippleOffset(m,x,y,z+e)-rippleOffset(m,x,y,z-e))/(2*e);positions[i+2]+=d;const nx=normals[i]*(1+dz)-normals[i+2]*dx,ny=normals[i+1]*(1+dz)-normals[i+2]*dy,nz=normals[i+2],len=Math.hypot(nx,ny,nz)||1;normals[i]=nx/len;normals[i+1]=ny/len;normals[i+2]=nz/len;}
- volume=0;for(let i=0;i<indices.length;i+=3){const a=indices[i]*3,b=indices[i+1]*3,c=indices[i+2]*3;volume+=(positions[a]*(positions[b+1]*positions[c+2]-positions[b+2]*positions[c+1])+positions[a+1]*(positions[b+2]*positions[c]-positions[b]*positions[c+2])+positions[a+2]*(positions[b]*positions[c+1]-positions[b+1]*positions[c]))/6;}
+ for(let i=0;i<positions.length;i+=3){if(i%384===0)yield;const x=positions[i],y=positions[i+1],z=positions[i+2],e=.04,d=rippleOffset(m,x,y,z),dx=(rippleOffset(m,x+e,y,z)-rippleOffset(m,x-e,y,z))/(2*e),dy=(rippleOffset(m,x,y+e,z)-rippleOffset(m,x,y-e,z))/(2*e),dz=(rippleOffset(m,x,y,z+e)-rippleOffset(m,x,y,z-e))/(2*e);positions[i+2]+=d;const nx=normals[i]*(1+dz)-normals[i+2]*dx,ny=normals[i+1]*(1+dz)-normals[i+2]*dy,nz=normals[i+2],len=Math.hypot(nx,ny,nz)||1;normals[i]=nx/len;normals[i+1]=ny/len;normals[i+2]=nz/len;}
+ volume=0;for(let i=0;i<indices.length;i+=3){if(i%3072===0)yield;const a=indices[i]*3,b=indices[i+1]*3,c=indices[i+2]*3;volume+=(positions[a]*(positions[b+1]*positions[c+2]-positions[b+2]*positions[c+1])+positions[a+1]*(positions[b+2]*positions[c]-positions[b]*positions[c+2])+positions[a+2]*(positions[b]*positions[c+1]-positions[b+1]*positions[c]))/6;}
 }
 const bounds=positions.length?[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity]:[0,0,0,0,0,0];for(let i=0;i<positions.length;i+=3)for(let a=0;a<3;a++){bounds[a]=Math.min(bounds[a],positions[i+a]);bounds[a+3]=Math.max(bounds[a+3],positions[i+a])}const mesh={positions:new Float32Array(positions),normals:new Float32Array(normals),indices:new Uint32Array(indices),volume:Math.abs(volume),bounds,sampling};
 // Typed output owns its buffers. Release the much larger JS builder arrays and
@@ -171,18 +174,52 @@ if(hasCollapsedMeshFaces(mesh)){
   // aligned attempt before falling back to uniform sampling. The explicit
   // offset makes the retry finite and is carried in the returned metadata.
   const retry:MeshSamplingOptions=!samplingOptions?.gridPhase?{featurePlanes:true,gridPhase:[.173,.223,.265],...(samplingOptions?.facePlaneOffset?{facePlaneOffset:samplingOptions.facePlaneOffset}:{})}:sampling.facePlaneOffset===.002?{featurePlanes:true,gridPhase:samplingOptions.gridPhase,facePlaneOffset:.02}:{featurePlanes:false};
-  const fallback=generateMesh(m,resolution,refinement,retry);
+  const fallback=yield* meshSteps(m,resolution,refinement,retry,rootRefinementPasses);
   return {...fallback,sampling:{...fallback.sampling!,quantizationLimited:true,...(!fallback.sampling!.featureAligned?{skippedReason:'quantization' as const}:{})}};
  }
  if(!samplingOptions?.gridPhase){
   // A surface can also pass almost exactly through an ordinary grid node.
   // One deterministic phase retry moves only the sampling nodes; the authored
   // field, extent endpoints and complete generated face topology remain intact.
-  const fallback=generateMesh(m,resolution,refinement,{featurePlanes:false,gridPhase:[.173,.223,.265]});
+  const fallback=yield* meshSteps(m,resolution,refinement,{featurePlanes:false,gridPhase:[.173,.223,.265]},rootRefinementPasses);
   return {...fallback,sampling:{...fallback.sampling!,quantizationLimited:true,skippedReason:'quantization'}};
  }
 }
 return refinement?{...refineMeshSurface(mesh,m.influences.some(f=>f.kind==='wave'&&f.enabled)?(x,y,z)=>evaluate(m,x,y,z):field,refinement),sampling}:mesh;}
+/** Authoritative synchronous geometry path. Preview stepping does not lower
+ * export resolution or bypass the existing quantization/refinement guards. */
+export function generateMesh(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions):MeshData {
+ const steps=meshSteps(m,resolution,refinement,samplingOptions);let step=steps.next();while(!step.done)step=steps.next();return step.value;
+}
+/** Explicit interaction-only approximation. Export/audit callers continue to
+ * use generateMesh: only the draft edge-root solve is capped at four passes. */
+export function generatePreviewMesh(m:FormModel,resolution=52):MeshData {
+ const steps=meshSteps(m,resolution,undefined,undefined,4);let step=steps.next();while(!step.done)step=steps.next();return step.value;
+}
+export type AsyncMeshOptions={
+ /** Explicitly opts viewport editing into four-pass edge roots. */
+ draft?:boolean;
+ /** Superseded previews stop between sample/cell groups, including retries. */
+ signal?:AbortSignal;
+ /** Cooperative work budget; not a guaranteed wall-clock maximum per group. */
+ budgetMs?:number;
+ /** Injected in deterministic tests; production yields to browser task input. */
+ yieldControl?:()=>Promise<void>;
+ now?:()=>number;
+};
+const yieldMeshTask=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,0));
+/** Cooperative fallback for viewport previews when module workers are blocked.
+ * With default options the mesh matches generateMesh byte-for-byte; explicitly
+ * requesting a draft caps only edge-root iterations. Export surface
+ * refinement, when explicitly requested, remains a synchronous finishing step. */
+export async function generateMeshAsync(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,options:AsyncMeshOptions={}):Promise<MeshData> {
+ const now=options.now??(()=>performance.now()),yieldControl=options.yieldControl??yieldMeshTask,budgetMs=options.budgetMs??8;
+ if(!Number.isFinite(budgetMs)||budgetMs<=0)throw Error('Mesh work budget must be positive and finite.');
+ const check=()=>{if(options.signal?.aborted)throw new DOMException('Mesh preview was superseded.','AbortError');};
+ check();const steps=meshSteps(m,resolution,refinement,samplingOptions,options.draft?4:24);let started=now();
+ try{for(;;){check();const step=steps.next();if(step.done){check();return step.value}if(now()-started>=budgetMs){await yieldControl();check();started=now()}}}
+ finally{steps.return(undefined as unknown as MeshData);}
+}
 function hasCollapsedMeshFaces(mesh:MeshData):boolean{
  const p=mesh.positions,indices=mesh.indices;
  for(let i=0;i<indices.length;i+=3){
@@ -192,6 +229,43 @@ function hasCollapsedMeshFaces(mesh:MeshData):boolean{
  }
  return false;
 }
-export function sectionContours(m:FormModel,z:number,n=100){const b=modelBounds(m),w=b[3]-b[0],h=b[4]-b[1],dx=w/n,dy=h/n;const segments:number[][]=[];const value=(i:number,j:number)=>evaluate(m,b[0]+i*dx,b[1]+j*dy,z);for(let j=0;j<n;j++)for(let i=0;i<n;i++){const points=[[b[0]+i*dx,b[1]+j*dy],[b[0]+(i+1)*dx,b[1]+j*dy],[b[0]+(i+1)*dx,b[1]+(j+1)*dy],[b[0]+i*dx,b[1]+(j+1)*dy]];const v=[value(i,j),value(i+1,j),value(i+1,j+1),value(i,j+1)],cuts:number[][]=[];for(let a=0;a<4;a++){const next=(a+1)%4;if((v[a]<0)!==(v[next]<0)){const t=v[a]/(v[a]-v[next]);cuts.push([points[a][0]+t*(points[next][0]-points[a][0]),points[a][1]+t*(points[next][1]-points[a][1])]);}}for(let a=0;a<cuts.length-1;a+=2)segments.push([...cuts[a],...cuts[a+1]]);}return {segments,width:w,height:h,minX:b[0],minY:b[1]};}
+export type SectionContours={segments:number[][];width:number;height:number;minX:number;minY:number};
+function* sectionSteps(m:FormModel,z:number,n=100):Generator<void,SectionContours,void>{
+ if(!Number.isInteger(n)||n<4||n>512||!Number.isFinite(z))throw Error('Section sampling needs a finite plane and 4–512 cells.');
+ const b=modelBounds(m),w=b[3]-b[0],h=b[4]-b[1],dx=w/n,dy=h/n,segments:number[][]=[];
+ const compiled=(m.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity),base=(x:number,y:number,z:number)=>evaluateBase(m,x,y,z,compiled),hasWaves=m.influences.some(f=>f.kind==='wave'&&f.enabled&&f.strength!==0);
+ const field=(x:number,y:number,z:number)=>{
+  if(!hasWaves)return base(x,y,z);
+  let q=z-rippleOffset(m,x,y,z);
+  for(let i=0;i<3;i++){const delta=rippleOffset(m,x,y,q),slope=(rippleOffset(m,x,y,q+.01)-delta)/.01;q-=(q+delta-z)/(1+slope)}
+  return base(x,y,q);
+ };
+ // Shared corners are sampled once. Float64 rows avoid quantizing field values
+ // while removing four complete evaluator calls for every cell.
+ let row=new Float64Array(n+1),next=new Float64Array(n+1),sampled=0;yield;
+ for(let i=0;i<=n;i++){row[i]=field(b[0]+i*dx,b[1],z);if(++sampled%64===0)yield;}
+ for(let j=0;j<n;j++){
+  for(let i=0;i<=n;i++){next[i]=field(b[0]+i*dx,b[1]+(j+1)*dy,z);if(++sampled%64===0)yield;}
+  for(let i=0;i<n;i++){
+   const points=[[b[0]+i*dx,b[1]+j*dy],[b[0]+(i+1)*dx,b[1]+j*dy],[b[0]+(i+1)*dx,b[1]+(j+1)*dy],[b[0]+i*dx,b[1]+(j+1)*dy]],v=[row[i],row[i+1],next[i+1],next[i]],cuts:number[][]=[];
+   for(let a=0;a<4;a++){const after=(a+1)%4;if((v[a]<0)!==(v[after]<0)){const t=v[a]/(v[a]-v[after]);cuts.push([points[a][0]+t*(points[after][0]-points[a][0]),points[a][1]+t*(points[after][1]-points[a][1])]);}}
+   for(let a=0;a<cuts.length-1;a+=2)segments.push([...cuts[a],...cuts[a+1]]);
+  }
+  const old=row;row=next;next=old;yield;
+ }
+ return {segments,width:w,height:h,minX:b[0],minY:b[1]};
+}
+export function sectionContours(m:FormModel,z:number,n=100):SectionContours{const steps=sectionSteps(m,z,n);let step=steps.next();while(!step.done)step=steps.next();return step.value;}
+/** Section sliders use the same field and contour ordering while yielding to
+ * pointer input when no worker is available. Stale slices can be aborted. */
+export async function sectionContoursAsync(m:FormModel,z:number,n=100,options:AsyncMeshOptions={}):Promise<SectionContours>{
+ const now=options.now??(()=>performance.now()),yieldControl=options.yieldControl??yieldMeshTask,budgetMs=options.budgetMs??8;
+ if(!Number.isFinite(budgetMs)||budgetMs<=0)throw Error('Section work budget must be positive and finite.');
+ const check=()=>{if(options.signal?.aborted)throw new DOMException('Section preview was superseded.','AbortError');};
+ check();const steps=sectionSteps(m,z,n);let started=now();
+ try{for(;;){check();const step=steps.next();if(step.done){check();return step.value}if(now()-started>=budgetMs){await yieldControl();check();started=now()}}}
+ finally{steps.return(undefined as unknown as SectionContours);}
+}
+
 export function silhouettePoints(m:FormModel,n=140){const b=modelBounds(m),w=b[3]-b[0],h=b[4]-b[1],d=b[5]-b[2],points:number[][]=[];for(let j=0;j<n;j++)for(let i=0;i<n;i++){const x=b[0]+(i+.5)/n*w,y=b[1]+(j+.5)/n*h;for(let k=0;k<=60;k++){if(evaluate(m,x,y,b[2]+k*d/60)<0){points.push([x,y]);break;}}}return {points,width:w,height:h,size:w/n,minX:b[0],minY:b[1]};}
 export function binarySTL(data:MeshData){if(!data.indices.length)throw Error('This field has no solid to export.');const count=data.indices.length/3,buffer=new ArrayBuffer(84+count*50),view=new DataView(buffer);const header=new TextEncoder().encode('FORM field sketchbook | millimetres');new Uint8Array(buffer).set(header);view.setUint32(80,count,true);for(let f=0;f<count;f++){const o=84+f*50,ids=[data.indices[f*3],data.indices[f*3+1],data.indices[f*3+2]],p=data.positions;const a=ids[0]*3,b=ids[1]*3,c=ids[2]*3,ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2],vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];const n=[uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx],len=Math.hypot(...n)||1;for(let q=0;q<3;q++)view.setFloat32(o+q*4,n[q]/len,true);for(let v=0;v<3;v++)for(let q=0;q<3;q++)view.setFloat32(o+12+v*12+q*4,p[ids[v]*3+q],true)}return buffer}
