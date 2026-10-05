@@ -1,6 +1,7 @@
 "use client";
 import {useRef,useState} from 'react';
 import {Box,Circle,Cylinder,Pill,Donut,Spline,Plus,Minus,Check,Copy,Trash2,SlidersHorizontal,X,Focus,LayoutGrid,Layers} from 'lucide-react';
+import type {ReactNode} from 'react';
 import type {LucideIcon} from 'lucide-react';
 import {LIMITS} from '@/lib/form-engine';
 import type {FormModel,Influence} from '@/lib/form-engine';
@@ -18,7 +19,7 @@ type EditGroup='size'|'position'|'rotation'|'softness';
 type Control={key:string;label:string;value:number;min:number;max:number;step:number;unit:string;change:(value:number)=>void};
 type Action={label:string;icon:LucideIcon;run:()=>void;disabled?:boolean};
 type Props={
- panel:QuickPanel;model:FormModel;selected:string;shape?:FormShape;influence?:Influence;asset?:PlacedAsset;view:ViewMode;handles:boolean;
+ solidControls?:ReactNode;panel:QuickPanel;model:FormModel;selected:string;shape?:FormShape;influence?:Influence;asset?:PlacedAsset;view:ViewMode;handles:boolean;
  transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';onTransformMode:(mode:DirectTransformMode,axis?:'x'|'y'|'z')=>void;
  begin:()=>void;end:()=>void;onShape:(patch:Partial<FormShape>,live?:boolean)=>void;onBase:(patch:Partial<FormModel>,live?:boolean)=>void;onInfluence:(patch:Partial<Influence>,live?:boolean)=>void;onAsset:(patch:Partial<PlacedAsset>,live?:boolean)=>void;
  onLattice:(patch:Partial<LatticeSettings>,live?:boolean)=>void;
@@ -87,6 +88,7 @@ export function MobileQuickWorkspace(props:Props){
    {model.lattice?.enabled&&<p className="quick-help">{model.lattice.region?.enabled?'Existing lattice region is preserved. ':'Pattern follows the composed form. '}Thickness is nominal; strength has not been simulated.</p>}
   </>}
   {panel==='edit'&&!emptyEdit&&<>
+   {props.solidControls}
    <div className="quick-edit-tabs" role="group" aria-label="Quick editing mode">{(['size','position','rotation','softness'] as const).filter(mode=>mode!=='position'||!attachedCurve&&!!(shape||asset||influence)).filter(mode=>mode!=='rotation'||!attachedCurve&&!!(shape||asset)).filter(mode=>mode!=='softness'||!!shape||selected==='body').map(mode=><button type="button" key={mode} disabled={!!linkedCut} aria-pressed={group===mode} onClick={()=>changeGroup(mode)}>{mode==='size'?influence?'Field':'Size':mode==='position'?'Move':mode==='rotation'?'Rotate':'Soften'}</button>)}</div>
    {canDirect&&group!=='softness'&&props.handles&&<p className="quick-transform-cue">{influence?'Drag grip to move field.':group==='rotation'?'Drag circle to rotate around '+(props.transformAxis??'z').toUpperCase()+'.':group==='position'?'Drag grip to move in the view plane.':'Drag square to scale uniformly.'}</p>}
    {linkedCut?<div className="quick-linked-cut"><p>This cut follows its component clearance.</p><button type="button" onClick={()=>props.onSelect(linkedCut.assetId)}>Edit component clearance</button></div>:active?<>
@@ -101,7 +103,7 @@ export function MobileQuickWorkspace(props:Props){
    <div className="quick-view-grid">{(['front','top','perspective'] as const).map(camera=><button type="button" key={camera} onClick={()=>props.onCamera(camera)}>{camera.charAt(0).toUpperCase()+camera.slice(1)}</button>)}<button type="button" onClick={props.onFit}><Focus size={17}/>Fit</button></div>
    <p className="quick-help">One finger turns · two fingers zoom and pan · two-finger tap undoes.</p>
   </>}
-  {panel==='objects'&&<div className="quick-object-list"><button type="button" aria-pressed={selected==='body'} onClick={()=>props.onSelect('body')}><Box size={18}/><span>{model.baseEnabled===false?'Construction':'Base mass'}</span></button>{model.shapes?.map(item=><button type="button" key={item.id} className={!item.enabled?'off':''} aria-pressed={selected===item.id} onClick={()=>props.onSelect(item.id)}><Box size={18}/><span>{item.name}</span><small>{item.operation==='union'?'Add':item.operation==='subtract'?'Cut':'Keep'}</small></button>)}{model.influences.map(item=><button type="button" key={item.id} className={!item.enabled?'off':''} aria-pressed={selected===item.id} onClick={()=>props.onSelect(item.id)}><SlidersHorizontal size={18}/><span>{item.name}</span></button>)}{model.assets?.map(item=><button type="button" key={item.id} aria-pressed={selected===item.id} onClick={()=>props.onSelect(item.id)}><Box size={18}/><span>{item.name}</span><small>Component</small></button>)}<button type="button" onClick={()=>props.onSelect(model.lattice?.enabled?'lattice':'enclosure')}><Layers size={18}/><span>Material details</span></button></div>}
+  {panel==='objects'&&<div className="quick-object-list"><button type="button" aria-pressed={selected==='body'} onClick={()=>props.onSelect('body')}><Box size={18}/><span>{model.baseEnabled===false?'Construction':'Base mass'}</span></button>{model.shapes?.map(item=><button type="button" key={item.id} className={!item.enabled?'off':''} aria-pressed={selected===item.id} onClick={()=>props.onSelect(item.id)}><Box size={18}/><span>{item.name}</span><small>{item.componentId===item.id?'Component':item.operation==='union'?'Add':item.operation==='subtract'?'Cut':'Keep'}</small></button>)}{model.influences.map(item=><button type="button" key={item.id} className={!item.enabled?'off':''} aria-pressed={selected===item.id} onClick={()=>props.onSelect(item.id)}><SlidersHorizontal size={18}/><span>{item.name}</span></button>)}{model.assets?.map(item=><button type="button" key={item.id} aria-pressed={selected===item.id} onClick={()=>props.onSelect(item.id)}><Box size={18}/><span>{item.name}</span><small>Component</small></button>)}<button type="button" onClick={()=>props.onSelect(model.lattice?.enabled?'lattice':'enclosure')}><Layers size={18}/><span>Material details</span></button></div>}
   {panel==='more'&&<div className="quick-more-grid">{props.more.map(({label,icon:Icon,run,disabled})=><button type="button" key={label} disabled={disabled} onClick={run}><Icon size={18}/>{label}</button>)}</div>}
  </section>;
 }

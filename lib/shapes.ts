@@ -11,7 +11,7 @@ export type SweepPoint={x:number;y:number;z:number;radius:number};
  * follows the curve with an elliptical section and optional tangent-axis roll;
  * it returns a conservative signed distance bound, not an exact distance.
  * Closed sweeps join unique authored controls cyclically, without endpoints. */
-export type FormShape = {id:string;name:string;kind:ShapeKind;enabled:boolean;operation:ShapeOperation;blend:number;x:number;y:number;z:number;rx:number;ry:number;rz:number;width:number;height:number;depth:number;roundness:number;path?:SweepPoint[];depthRatio?:number;sectionMode?:'fixed'|'transported';sectionRoll?:number;closed?:boolean};
+export type FormShape = {id:string;name:string;kind:ShapeKind;enabled:boolean;operation:ShapeOperation;blend:number;x:number;y:number;z:number;rx:number;ry:number;rz:number;width:number;height:number;depth:number;roundness:number;path?:SweepPoint[];depthRatio?:number;sectionMode?:'fixed'|'transported';sectionRoll?:number;closed?:boolean;componentId?:string};
 export const MAX_SHAPES=32;
 export const SHAPE_LIMITS = {blend:[0,40],x:[-300,300],y:[-300,300],z:[-300,300],rx:[-360,360],ry:[-360,360],rz:[-360,360],width:[4,240],height:[4,240],depth:[4,240],roundness:[0,60]} as const;
 export const SWEEP_LIMITS={pathPoints:[2,12],coordinate:[-240,240],radius:[1.5,40],depthRatio:[.25,1]} as const;

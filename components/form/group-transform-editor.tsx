@@ -27,12 +27,12 @@ const originDraft=(shape:FormShape):VectorDraft=>({x:String(shape.x),y:String(sh
 export function GroupTransformEditor(props:GroupTransformEditorProps){
  const shape=props.model.shapes?.find(candidate=>candidate.id===props.shapeId);
  if(!shape)return null;
- return <GroupTransformEditorContent key={shape.id} {...props} shape={shape}/>;
+ return <GroupTransformEditorContent key={shape.id+'-'+(shape.componentId??'body')} {...props} shape={shape}/>;
 }
 
 function GroupTransformEditorContent({model,shape,onCommand}:GroupTransformEditorProps&{shape:FormShape}){
  const [expanded,setExpanded]=useState(false);
- const [members,setMembers]=useState(()=>new Set([shape.id]));
+ const [members,setMembers]=useState(()=>new Set(shape.componentId?model.shapes?.filter(candidate=>candidate.componentId===shape.componentId).map(candidate=>candidate.id):[shape.id]));
  const [translation,setTranslation]=useState<VectorDraft>(ZERO_DRAFT);
  const [rotation,setRotation]=useState<VectorDraft>(ZERO_DRAFT);
  const [pivot,setPivot]=useState<VectorDraft|null>(null);

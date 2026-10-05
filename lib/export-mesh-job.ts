@@ -1,5 +1,5 @@
 import {binarySTLAsync,validateModel} from './form-engine.ts';
-import type {FormModel} from './form-engine.ts';
+import type {FormModel,MeshData} from './form-engine.ts';
 import {auditExportMeshAsync} from './component-fit.ts';
 import type {ExportMeshAudit} from './component-fit.ts';
 import type {MeshRefinementStats} from './mesh-refinement.ts';
@@ -13,7 +13,7 @@ export type {ExportMeshProgress,ExportMeshStage} from './export-progress.ts';
 export {exportMeshStageLabel} from './export-progress.ts';
 
 export type ExportMeshTask='audit'|'stl';
-export type ExportMeshCheck=ExportMeshAudit&{refinement?:MeshRefinementStats;sampling?:MeshSamplingStats;milliseconds:number};
+export type ExportMeshCheck=ExportMeshAudit&{components?:MeshData['components'];refinement?:MeshRefinementStats;sampling?:MeshSamplingStats;milliseconds:number};
 export type ExportMeshResult={stl?:ArrayBuffer;check:ExportMeshCheck};
 type MeshWorker=Pick<Worker,'postMessage'|'terminate'|'onmessage'|'onerror'>;
 /** Worker injection is for platform adapters/tests; it adds no user setting. */
@@ -49,7 +49,7 @@ export function runExportMeshJob(model:FormModel,refined:boolean,task:ExportMesh
     let stl:ArrayBuffer|undefined;
     if(task==='stl'){throwIfAborted(controller.signal);progress({stage:'writing'});stl=await binarySTLAsync(mesh,work);}
     throwIfAborted(controller.signal);
-    return {check:{audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started},...(stl?{stl}:{})};
+    return {check:{audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,components:mesh.components,milliseconds:performance.now()-started},...(stl?{stl}:{})};
    })().then(result=>complete(result),error=>complete(undefined,error));
   };
   try{

@@ -31,7 +31,7 @@ test('loading and editing a template never changes the reusable source document'
  assert.throws(()=>createProjectTemplate('missing'),/Unknown/);
 });
 
-test('camera reference study is a connected standing form with independently editable valleys',()=>{
+test('camera reference study has a standing body and separate lens plate with independently editable valleys',()=>{
  const model=createProjectTemplate('camera-pod');
  const valley=model.shapes.find(shape=>shape.id==='colani-upper-valley');
  assert.equal(valley.kind,'sweep');
@@ -39,7 +39,7 @@ test('camera reference study is a connected standing form with independently edi
  valley.path[1].y+=3;
  assert.notDeepEqual(valley.path,createProjectTemplate('camera-pod').shapes.find(shape=>shape.id===valley.id).path);
  const mesh=generateMesh(createProjectTemplate('camera-pod'),90),audit=auditMesh(mesh);
- assert.equal(audit.components,1);
+ assert.equal(audit.components,2);
  assert.equal(audit.finite,true);
  for(const key of ['boundaryEdges','nonManifoldEdges','inconsistentWindingEdges','degenerateTriangles','invalidIndices'])assert.equal(audit[key],0,key);
  const [width,height]=audit.dimensions;

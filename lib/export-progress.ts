@@ -1,3 +1,4 @@
+import {hasSolidComponents,solidComponents,combineComponentMeshes} from './solid-components.ts';
 import {generateMesh,generateMeshAsync,evaluate,evaluateBase} from './form-engine.ts';
 import type {FormModel,MeshData} from './form-engine.ts';
 import {resolveAttachments} from './attachments.ts';
@@ -35,6 +36,7 @@ function refinementField(model:FormModel){
 /** Export-only boundary reporting leaves the viewport meshing API unchanged.
  * Sampling, root solving and refinement use the authoritative algorithms. */
 export function generateExportMesh(model:FormModel,resolution:number,refinement:MeshRefinementOptions|undefined,onProgress?:(progress:ExportMeshProgress)=>void):MeshData{
+ if(hasSolidComponents(model)){const parts=solidComponents(model);return combineComponentMeshes(parts,parts.map(part=>generateExportMesh(part.model,resolution,refinement,onProgress)));}
  onProgress?.({stage:'generating'});
  const mesh=generateMesh(model,resolution);
  if(!refinement)return mesh;
@@ -43,6 +45,7 @@ export function generateExportMesh(model:FormModel,resolution:number,refinement:
 }
 
 export async function generateExportMeshAsync(model:FormModel,resolution:number,refinement:MeshRefinementOptions|undefined,options:ExportProgressOptions={}):Promise<MeshData>{
+ if(hasSolidComponents(model)){const parts=solidComponents(model),meshes:MeshData[]=[];for(const part of parts)meshes.push(await generateExportMeshAsync(part.model,resolution,refinement,options));return combineComponentMeshes(parts,meshes);}
  throwIfAborted(options.signal);options.onProgress?.({stage:'generating'});
  const mesh=await generateMeshAsync(model,resolution,undefined,undefined,{...options,draft:false});
  if(!refinement)return mesh;
