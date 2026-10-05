@@ -41,7 +41,22 @@ obsolete meshes, moved and disabled objects, holes, shells, resolved curve
 attachments, lattices, rays starting inside, near misses, and budgets that
 stop provenance compilation or evaluation. Export tests preserve exact mesh
 and STL bytes, and cover intermediate worker messages, cancellation and
-late updates. Deployed observations follow the browser checks.
+late updates.
+
+On the deployed preview at f524fe0, a Refined STL completed with 585,488
+triangles, one connected piece and zero open, non-manifold or inconsistent
+edges. Selecting Base mass during a new export kept the task strip available;
+cancelling there removed it without an error or a model edit. Starting a mesh
+check, cancelling it and immediately starting an STL export produced a new
+prepared-file link and restored the export controls. These checks exercised
+the browser worker path; cooperative fallback cancellation and exact output
+parity were verified by tests rather than forced in the browser.
+
+In the software viewport, selecting the hidden Base mass and tapping the
+visible box opened its Rounded box quick editor. This verifies the deployed
+surface-selection flow; obsolete or absent displayed meshes are covered by
+the field-picking tests rather than a timed browser race.
+
 Physical iPhone GPU timings and multitouch remain unmeasured. The next loop
 should explore direct curve-point editing and local material regions, and
 measure picking on complex sweeps and thin lattices on a physical phone.
