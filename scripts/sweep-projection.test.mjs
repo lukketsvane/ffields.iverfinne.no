@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fitSweepProjection,projectedSectionJoin,projectSweepSection} from '../components/form/sweep-projection.ts';
 import {makeShape,sweepFrames,sweepSamples} from '../lib/shapes.ts';
+import {createStereoCameraStudy} from '../lib/stereo-camera-study.ts';
 
 const point={x:31,y:-17,z:23,radius:10};
 const near=(actual,expected)=>assert.ok(Math.abs(actual-expected)<1e-8,`${actual} != ${expected}`);
 const recoverCovariance=section=>{const angle=section.angle*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle),major=section.rx**2,minor=section.ry**2;return {xx:major*c*c+minor*s*s,xy:(major-minor)*c*s,yy:major*s*s+minor*c*c}};
+const sectionExtents=sections=>({minX:Math.min(...sections.map(section=>section.x-section.extentX)),maxX:Math.max(...sections.map(section=>section.x+section.extentX)),minY:Math.min(...sections.map(section=>section.y-section.extentY)),maxY:Math.max(...sections.map(section=>section.y+section.extentY))});
+const assertFitContains=(sections,bounds)=>{for(const section of sections){assert.ok(section.x-section.extentX>=bounds.x&&section.x+section.extentX<=bounds.x+bounds.size);assert.ok(section.y-section.extentY>=bounds.y&&section.y+section.extentY<=bounds.y+bounds.size)}};
 
 test('fixed sections retain their original plane projections and physical centers',()=>{
  const xy=projectSweepSection(point,'xy',.4),xz=projectSweepSection(point,'xz',.4),yz=projectSweepSection(point,'yz',.4);
@@ -50,4 +53,27 @@ test('preview joins remain finite for turned sections and coincident caps',()=>{
  const a=projectSweepSection(point,'xy',.25,{tangent:[0,1,0],major:[0,0,1],minor:[1,0,0]}),b=projectSweepSection({...point,x:55,y:30},'xy',.25,{tangent:[1,0,0],major:[0,0,1],minor:[0,1,0]});
  assert.ok(projectedSectionJoin(a,b).split(/[ ,]/).map(Number).every(Number.isFinite));
  assert.equal(projectedSectionJoin(a,a),null);
+});
+
+test('explicit fit scales compact transported sections in every plane while keeping full physical extents',()=>{
+ const tiny=projectSweepSection({x:81,y:-54,z:12,radius:1.5},'xy'),minimum=fitSweepProjection([tiny]);
+ near(minimum.size,32);near(minimum.x+minimum.size/2,tiny.x);near(minimum.y+minimum.size/2,tiny.y);assertFitContains([tiny],minimum);
+ const shape={...makeShape('sweep'),sectionMode:'transported',sectionRoll:51,depthRatio:.3,path:[{x:-12,y:-6,z:-8,radius:3},{x:0,y:9,z:7,radius:4},{x:10,y:3,z:-4,radius:2}]};
+ const samples=sweepSamples(shape),frames=sweepFrames(shape);
+ for(const plane of ['xy','xz','yz']){
+  const sections=samples.map((sample,index)=>projectSweepSection(sample,plane,shape.depthRatio,frames[index])),bounds=fitSweepProjection(sections),extent=sectionExtents(sections);
+  near(bounds.size,Math.max(32,(extent.maxX-extent.minX)*1.24,(extent.maxY-extent.minY)*1.24));
+  assert.ok(bounds.size<80,'a compact curve should fill its sketch instead of inheriting a 200 mm floor');
+  near(bounds.x+bounds.size/2,(extent.minX+extent.maxX)/2);near(bounds.y+bounds.size/2,(extent.minY+extent.maxY)/2);
+  assertFitContains(sections,bounds);
+ }
+});
+
+test('the actual stereo collar fits its 60 mm camera envelope at about 94 mm sketch scale',()=>{
+ const collar=createStereoCameraStudy().shapes.find(shape=>shape.id==='stereo-shoulder-left');
+ const samples=sweepSamples(collar),frames=sweepFrames(collar),sections=samples.map((sample,index)=>projectSweepSection(sample,'xy',collar.depthRatio,frames[index]));
+ const extent=sectionExtents(sections),bounds=fitSweepProjection(sections);
+ near(bounds.size,Math.max(extent.maxX-extent.minX,extent.maxY-extent.minY)*1.24);
+ assert.ok(bounds.size>93&&bounds.size<95,'the reference collar should fit near 94 mm, rather than 200 mm');
+ assertFitContains(sections,bounds);
 });

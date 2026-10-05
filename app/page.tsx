@@ -24,7 +24,7 @@ import {SweepProfileControls,ShapeDirectionEditor} from '@/components/form/spati
 import {GroupTransformEditor} from '@/components/form/group-transform-editor';
 import {MeshInspector} from '@/components/form/mesh-inspector';
 import type {MeshCheckResult} from '@/components/form/mesh-inspector';
-import {auditMesh} from '@/lib/mesh-audit';
+import {auditExportMesh} from '@/lib/component-fit';
 import {resolveAttachments} from '@/lib/attachments';
 import {applyConstructionCommand} from '@/lib/construction';
 import {createTrussStudy} from '@/lib/truss-study';
@@ -149,7 +149,7 @@ function runMeshJob(model:FormModel,refined:boolean,task:'audit'|'stl',holdAbort
   let worker:Worker;
   try{worker=new Worker(new URL('../lib/form-worker.ts',import.meta.url),{type:'module'})}
   catch{
-   const timer=setTimeout(()=>{holdAbort(null);try{const started=performance.now(),mesh=generateMesh(model,220,refinement),check={audit:auditMesh(mesh),refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};resolve({check,...(task==='stl'?{stl:binarySTL(mesh)}:{})})}catch(error){reject(error)}},40);
+   const timer=setTimeout(()=>{holdAbort(null);try{const started=performance.now(),validated=validateModel(model),mesh=generateMesh(validated,220,refinement),{audit,componentFit}=auditExportMesh(validated,mesh),check={audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};resolve({check,...(task==='stl'?{stl:binarySTL(mesh)}:{})})}catch(error){reject(error)}},40);
    holdAbort(()=>{clearTimeout(timer);holdAbort(null);reject(Error('Mesh check cancelled.'))});return;
   }
   const finish=()=>{worker.terminate();holdAbort(null)};

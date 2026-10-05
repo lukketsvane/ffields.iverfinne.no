@@ -162,13 +162,16 @@ const bounds=positions.length?[Infinity,Infinity,Infinity,-Infinity,-Infinity,-I
 // edge-key map before refinement or a retry can allocate another whole mesh.
 positions.length=0;normals.length=0;indices.length=0;edges.clear();
 // Tiny feature cells can put distinct roots on the same Float32 coordinate.
-// Retain complete topology by regenerating with the ordinary grid; do not
-// delete collapsed faces or present their optional alignment as successful.
+// Retain complete topology through bounded grid retries; do not delete
+// collapsed faces or present discarded optional alignment as successful.
 if(hasCollapsedMeshFaces(mesh)){
  if(sampling.featureAligned){
   // Retain dimensional face planes where possible: move only the ordinary
-  // nodes first, before discarding optional alignment on a subsequent retry.
-  const fallback=generateMesh(m,resolution,refinement,samplingOptions?.gridPhase?{featurePlanes:false}:{featurePlanes:true,gridPhase:[.173,.223,.265]});
+  // nodes first. If that still collapses a narrow cell, make one wider-bracket
+  // aligned attempt before falling back to uniform sampling. The explicit
+  // offset makes the retry finite and is carried in the returned metadata.
+  const retry:MeshSamplingOptions=!samplingOptions?.gridPhase?{featurePlanes:true,gridPhase:[.173,.223,.265],...(samplingOptions?.facePlaneOffset?{facePlaneOffset:samplingOptions.facePlaneOffset}:{})}:sampling.facePlaneOffset===.002?{featurePlanes:true,gridPhase:samplingOptions.gridPhase,facePlaneOffset:.02}:{featurePlanes:false};
+  const fallback=generateMesh(m,resolution,refinement,retry);
   return {...fallback,sampling:{...fallback.sampling!,quantizationLimited:true,...(!fallback.sampling!.featureAligned?{skippedReason:'quantization' as const}:{})}};
  }
  if(!samplingOptions?.gridPhase){
