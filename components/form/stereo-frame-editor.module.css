@@ -1,0 +1,15 @@
+.panel{min-width:0;color:var(--label)}
+.panel h2{font-size:13px;font-weight:500;margin:0 0 8px}
+.panel p{font-size:11px;line-height:1.5;color:var(--muted-foreground);margin:8px 0}
+.fields{display:grid;gap:7px;margin:14px 0}
+.fields label{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;font-size:12px}
+.fields span{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.fields input{width:75px;min-width:0;height:32px;padding:0 7px;background:var(--control);border:1px solid var(--line);border-radius:4px;color:var(--foreground);font:12px var(--font-geist-mono),monospace;text-align:right}
+.fields small{color:var(--muted-foreground);font-size:10px}
+.fields input:focus{outline:1px solid var(--handle);border-color:var(--handle)}
+.fields input[aria-invalid=true]{border-color:var(--destructive);outline-color:var(--destructive)}
+.panel button{width:100%;min-height:34px;padding:5px;border:1px solid var(--line);border-radius:4px;color:var(--foreground);background:var(--control);font-size:12px;touch-action:manipulation}
+.panel button:hover{background:var(--accent)}
+.panel button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
+.panel p.error{color:var(--destructive)}
+@media(max-width:760px),(max-width:960px) and (max-height:520px) and (pointer:coarse){.panel h2{font-size:14px}.fields label{font-size:13px}.fields input{height:40px;font-size:16px;width:88px}.panel button{min-height:42px;font-size:13px}}

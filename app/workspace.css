@@ -239,3 +239,5 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
  .attachment-offset-field input{height:42px;font-size:16px}
  .attachment-help,.attachment-error{font-size:11px}
 }
+
+.clearance-link{margin-bottom:12px}.clearance-link button{width:100%;min-height:40px;padding:6px;border:1px solid var(--line);border-radius:4px;color:var(--foreground);background:var(--control);font-size:12px}.clearance-link p{font-size:11px;line-height:1.5;color:var(--muted-foreground);margin:7px 0}
