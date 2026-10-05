@@ -86,6 +86,12 @@ The 220 result has 177,732 vertices and volume 47,657.1062 mm³. Its actual adde
 
 After integrating recovery and the smaller sketch fit, all 155 tests pass with zero failures/skips. The final production build passes with 54 local PWA assets and content hash `c1ea101a0d96db9a`. The recovery and fallback paths received independent code review.
 
+The final release preview at commit `e543b911c2f635a8a6fdd6dea3589948b3865002` confirms the same failure case through the actual browser worker: 355,512 triangles, two closed components, zero open/nonmanifold/winding edges and 23 added face planes. Both seats show Clear, only the hidden left reference's insertion shows Interference, and right insertion stays Clear. Generation plus verification took 42.0 s in this browser. Two Undo actions restore the exact original frame and reference visibility. The smaller closed-curve sketch also shows the expected 93.9025 mm span. Subsequent evidence commits only add this journal and screenshots; application source remains identical to this verified release.
+
+![Final preview distinguishes seated clearance from a blocked insertion](screenshots/stereo-loops-insertion-verified.jpg)
+
+![Closed collar uses a tighter sketch view](screenshots/stereo-loops-editor.jpg)
+
 ## Further design work
 
 Continuous loops make collar editing safer and support curved rings without a duplicated seam. The fit report gives the designer evidence about seated and straight insertion space against the housing mesh. It does not check collisions between components or infer an insertion assembly sequence, flexing clip behavior, optical field of view, self-intersections, material strength or retention loads. Those remain separate design questions for the same frame.
