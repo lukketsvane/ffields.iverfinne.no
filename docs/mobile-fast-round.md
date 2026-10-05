@@ -79,6 +79,17 @@ The deployed compact UI passed blank construction → box insertion → width
 Solid → Cellular. Live checking caught and fixed native range rounding and
 first-time cellular cutaway after shelling.
 
+The final deployed preview also passed direct on-surface grip movement
+(X changed to 5.2 mm) and one undo back to X=0. Both numeric and range controls
+retained the cylinder's exact 24.32 mm value. Hollow → first-time Cellular
+opened at 60% cutaway. The cellular export audit exceeded the browser tool's
+15-second deadline but continued in its dedicated worker and completed in
+20.9 seconds: 4,872,104 triangles, one connected piece, zero open edges,
+nonmanifold edges or winding conflicts. This checks mesh connectivity, not
+physical fit or strength. Worker-construction failure still uses the older
+synchronous export-audit fallback; making that fallback cooperative belongs
+in the next round.
+
 A local stereo draft at grid 28 produced 11,124 triangles: the full root
 policy took about 420 ms and the draft policy about 288 ms. This is a
 workspace comparison, not a phone timing claim. Immediate grips remain
