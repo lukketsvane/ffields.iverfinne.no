@@ -1,6 +1,7 @@
 import assetCatalog from './asset-catalog.json' with {type:'json'};
 import type {PlacedAsset} from './assets';
-import {refineMeshSurface} from './mesh-refinement.ts';
+import {refineMeshSurface,refineMeshSurfaceAsync} from './mesh-refinement.ts';
+import {drainSteps} from './cooperative-task.ts';
 import {createMeshSamplingGrid} from './mesh-sampling.ts';
 import type {MeshSamplingOptions,MeshSamplingStats} from './mesh-sampling.ts';
 import type {MeshRefinementOptions,MeshRefinementStats} from './mesh-refinement.ts';
@@ -160,14 +161,14 @@ if(m.influences.some(f=>f.kind==='wave'&&f.enabled)){
  for(let i=0;i<positions.length;i+=3){if(i%384===0)yield;const x=positions[i],y=positions[i+1],z=positions[i+2],e=.04,d=rippleOffset(m,x,y,z),dx=(rippleOffset(m,x+e,y,z)-rippleOffset(m,x-e,y,z))/(2*e),dy=(rippleOffset(m,x,y+e,z)-rippleOffset(m,x,y-e,z))/(2*e),dz=(rippleOffset(m,x,y,z+e)-rippleOffset(m,x,y,z-e))/(2*e);positions[i+2]+=d;const nx=normals[i]*(1+dz)-normals[i+2]*dx,ny=normals[i+1]*(1+dz)-normals[i+2]*dy,nz=normals[i+2],len=Math.hypot(nx,ny,nz)||1;normals[i]=nx/len;normals[i+1]=ny/len;normals[i+2]=nz/len;}
  volume=0;for(let i=0;i<indices.length;i+=3){if(i%3072===0)yield;const a=indices[i]*3,b=indices[i+1]*3,c=indices[i+2]*3;volume+=(positions[a]*(positions[b+1]*positions[c+2]-positions[b+2]*positions[c+1])+positions[a+1]*(positions[b+2]*positions[c]-positions[b]*positions[c+2])+positions[a+2]*(positions[b]*positions[c+1]-positions[b+1]*positions[c]))/6;}
 }
-const bounds=positions.length?[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity]:[0,0,0,0,0,0];for(let i=0;i<positions.length;i+=3)for(let a=0;a<3;a++){bounds[a]=Math.min(bounds[a],positions[i+a]);bounds[a+3]=Math.max(bounds[a+3],positions[i+a])}const mesh={positions:new Float32Array(positions),normals:new Float32Array(normals),indices:new Uint32Array(indices),volume:Math.abs(volume),bounds,sampling};
+const bounds=positions.length?[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity]:[0,0,0,0,0,0];for(let i=0;i<positions.length;i+=3){if(i%3072===0)yield;for(let a=0;a<3;a++){bounds[a]=Math.min(bounds[a],positions[i+a]);bounds[a+3]=Math.max(bounds[a+3],positions[i+a])}}const mesh={positions:new Float32Array(positions),normals:new Float32Array(normals),indices:new Uint32Array(indices),volume:Math.abs(volume),bounds,sampling};
 // Typed output owns its buffers. Release the much larger JS builder arrays and
 // edge-key map before refinement or a retry can allocate another whole mesh.
 positions.length=0;normals.length=0;indices.length=0;edges.clear();
 // Tiny feature cells can put distinct roots on the same Float32 coordinate.
 // Retain complete topology through bounded grid retries; do not delete
 // collapsed faces or present discarded optional alignment as successful.
-if(hasCollapsedMeshFaces(mesh)){
+if(yield* collapsedFaceSteps(mesh)){
  if(sampling.featureAligned){
   // Retain dimensional face planes where possible: move only the ordinary
   // nodes first. If that still collapses a narrow cell, make one wider-bracket
@@ -210,20 +211,18 @@ export type AsyncMeshOptions={
 const yieldMeshTask=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,0));
 /** Cooperative fallback for viewport previews when module workers are blocked.
  * With default options the mesh matches generateMesh byte-for-byte; explicitly
- * requesting a draft caps only edge-root iterations. Export surface
- * refinement, when explicitly requested, remains a synchronous finishing step. */
+ * requesting a draft caps only edge-root iterations. Refinement is cooperative
+ * too, preserving the complete authoritative algorithm and accepted patches. */
 export async function generateMeshAsync(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,options:AsyncMeshOptions={}):Promise<MeshData> {
- const now=options.now??(()=>performance.now()),yieldControl=options.yieldControl??yieldMeshTask,budgetMs=options.budgetMs??8;
- if(!Number.isFinite(budgetMs)||budgetMs<=0)throw Error('Mesh work budget must be positive and finite.');
- const check=()=>{if(options.signal?.aborted)throw new DOMException('Mesh preview was superseded.','AbortError');};
- check();const steps=meshSteps(m,resolution,refinement,samplingOptions,options.draft?4:24);let started=now();
- try{for(;;){check();const step=steps.next();if(step.done){check();return step.value}if(now()-started>=budgetMs){await yieldControl();check();started=now()}}}
- finally{steps.return(undefined as unknown as MeshData);}
+ const mesh=await drainSteps(meshSteps(m,resolution,undefined,samplingOptions,options.draft?4:24),options);
+ if(!refinement)return mesh;
+ const resolved=resolveAttachments(m),compiled=(resolved.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity),field=resolved.influences.some(f=>f.kind==='wave'&&f.enabled)?(x:number,y:number,z:number)=>evaluate(resolved,x,y,z):(x:number,y:number,z:number)=>evaluateBase(resolved,x,y,z,compiled);
+ return {...await refineMeshSurfaceAsync(mesh,field,refinement,options),sampling:mesh.sampling};
 }
-function hasCollapsedMeshFaces(mesh:MeshData):boolean{
+function* collapsedFaceSteps(mesh:MeshData):Generator<void,boolean,void>{
  const p=mesh.positions,indices=mesh.indices;
  for(let i=0;i<indices.length;i+=3){
-  const a=indices[i]*3,b=indices[i+1]*3,c=indices[i+2]*3,ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2],vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];
+  if(i%1536===0)yield;const a=indices[i]*3,b=indices[i+1]*3,c=indices[i+2]*3,ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2],vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];
   const area2=Math.hypot(uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx);
   if(!Number.isFinite(area2)||area2<=1e-12)return true;
  }
@@ -268,4 +267,8 @@ export async function sectionContoursAsync(m:FormModel,z:number,n=100,options:As
 }
 
 export function silhouettePoints(m:FormModel,n=140){const b=modelBounds(m),w=b[3]-b[0],h=b[4]-b[1],d=b[5]-b[2],points:number[][]=[];for(let j=0;j<n;j++)for(let i=0;i<n;i++){const x=b[0]+(i+.5)/n*w,y=b[1]+(j+.5)/n*h;for(let k=0;k<=60;k++){if(evaluate(m,x,y,b[2]+k*d/60)<0){points.push([x,y]);break;}}}return {points,width:w,height:h,size:w/n,minX:b[0],minY:b[1]};}
-export function binarySTL(data:MeshData){if(!data.indices.length)throw Error('This field has no solid to export.');const count=data.indices.length/3,buffer=new ArrayBuffer(84+count*50),view=new DataView(buffer);const header=new TextEncoder().encode('FORM field sketchbook | millimetres');new Uint8Array(buffer).set(header);view.setUint32(80,count,true);for(let f=0;f<count;f++){const o=84+f*50,ids=[data.indices[f*3],data.indices[f*3+1],data.indices[f*3+2]],p=data.positions;const a=ids[0]*3,b=ids[1]*3,c=ids[2]*3,ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2],vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];const n=[uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx],len=Math.hypot(...n)||1;for(let q=0;q<3;q++)view.setFloat32(o+q*4,n[q]/len,true);for(let v=0;v<3;v++)for(let q=0;q<3;q++)view.setFloat32(o+12+v*12+q*4,p[ids[v]*3+q],true)}return buffer}
+function* stlSteps(data:MeshData):Generator<void,ArrayBuffer,void>{if(!data.indices.length)throw Error('This field has no solid to export.');const count=data.indices.length/3,buffer=new ArrayBuffer(84+count*50),view=new DataView(buffer);const header=new TextEncoder().encode('FORM field sketchbook | millimetres');new Uint8Array(buffer).set(header);view.setUint32(80,count,true);yield;for(let f=0;f<count;f++){if(f%512===0)yield;const o=84+f*50,ids=[data.indices[f*3],data.indices[f*3+1],data.indices[f*3+2]],p=data.positions;const a=ids[0]*3,b=ids[1]*3,c=ids[2]*3,ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2],vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];const n=[uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx],len=Math.hypot(...n)||1;for(let q=0;q<3;q++)view.setFloat32(o+q*4,n[q]/len,true);for(let v=0;v<3;v++)for(let q=0;q<3;q++)view.setFloat32(o+12+v*12+q*4,p[ids[v]*3+q],true)}return buffer}
+
+export function binarySTL(data:MeshData):ArrayBuffer{const steps=stlSteps(data);let step=steps.next();while(!step.done)step=steps.next();return step.value;}
+/** Same binary millimetre STL bytes, written in cancellable task groups. */
+export function binarySTLAsync(data:MeshData,options:AsyncMeshOptions={}):Promise<ArrayBuffer>{return drainSteps(stlSteps(data),options);}

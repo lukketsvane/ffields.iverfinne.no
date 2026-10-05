@@ -1,9 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {materialModePatch,quickShape,scaleSweep,scrubKeyValue,sweepScaleLimits} from '../lib/quick-modelling.ts';
+import {hasQuickSolid,materialModePatch,quickEntryPanel,quickShape,scaleSweep,scrubKeyValue,sweepScaleLimits} from '../lib/quick-modelling.ts';
 import {blankConstruction,applyConstructionCommand} from '../lib/construction.ts';
 import {DEFAULT_MODEL,cloneModel,validateModel} from '../lib/form-engine.ts';
 import {makeShape,evaluateShape,shapeBounds} from '../lib/shapes.ts';
+
+test('quick tools always open an actionable tray from blank, hidden-base and quality selections',()=>{
+ const blank=blankConstruction(),before=structuredClone(blank);
+ assert.equal(hasQuickSolid(blank),false);
+ for(const selection of ['body','mesh-quality','lattice','enclosure','missing'])assert.equal(quickEntryPanel(blank,selection),'add');
+ const disabled={...makeShape('box'),enabled:false},hidden={...blank,shapes:[disabled]};
+ assert.equal(hasQuickSolid(hidden),false);assert.equal(quickEntryPanel(hidden,'body'),'add');
+ const subtract={...makeShape('box'),operation:'subtract'},onlyCut={...blank,shapes:[subtract]};
+ assert.equal(hasQuickSolid(onlyCut),false);assert.equal(quickEntryPanel(onlyCut,'body'),'add');
+ const shape=makeShape('box'),construction={...blank,shapes:[shape]};
+ assert.equal(hasQuickSolid(construction),true);assert.equal(quickEntryPanel(construction,'body'),'objects');assert.equal(quickEntryPanel(construction,'mesh-quality'),'objects');assert.equal(quickEntryPanel(construction,shape.id),'edit');
+ const base=cloneModel(DEFAULT_MODEL);assert.equal(quickEntryPanel(base,'body'),'edit');assert.equal(quickEntryPanel(base,'mesh-quality'),'objects');assert.equal(quickEntryPanel(base,base.influences[0].id),'edit');
+ const component={id:'module',sourceId:'mock',name:'Module',visible:true,x:0,y:0,z:0,rx:0,ry:0,rz:0,scale:1};
+ assert.equal(quickEntryPanel({...blank,assets:[component]},component.id),'edit');
+ assert.deepEqual(blank,before);
+});
 
 test('first touch primitive starts at the working origin; every quick kind is a valid atomic command',()=>{
  const blank=blankConstruction(),before=structuredClone(blank);

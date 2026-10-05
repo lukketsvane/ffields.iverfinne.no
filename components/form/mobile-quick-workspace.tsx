@@ -1,23 +1,25 @@
 "use client";
 import {useRef,useState} from 'react';
-import {Box,Circle,Cylinder,Pill,Donut,Spline,Plus,Minus,Check,Copy,Trash2,SlidersHorizontal,X,Move,Focus,LayoutGrid,Layers} from 'lucide-react';
+import {Box,Circle,Cylinder,Pill,Donut,Spline,Plus,Minus,Check,Copy,Trash2,SlidersHorizontal,X,Focus,LayoutGrid,Layers} from 'lucide-react';
 import type {LucideIcon} from 'lucide-react';
 import {LIMITS} from '@/lib/form-engine';
 import type {FormModel,Influence} from '@/lib/form-engine';
 import {SHAPE_LIMITS,shapeBounds} from '@/lib/shapes';
 import type {FormShape,ShapeKind,ShapeOperation} from '@/lib/shapes';
-import {materialModePatch,scaleSweep,scrubKeyValue,sweepScaleLimits} from '@/lib/quick-modelling';
+import {hasQuickSolid,materialModePatch,scaleSweep,scrubKeyValue,sweepScaleLimits} from '@/lib/quick-modelling';
+import type {DirectTransformMode} from '@/lib/direct-manipulation';
 import type {PlacedAsset} from '@/lib/assets';
 import {LATTICE_LIMITS} from '@/lib/lattice';
 import type {LatticeSettings} from '@/lib/lattice';
 import type {ViewMode} from './viewport';
 
 export type QuickPanel='add'|'cut'|'edit'|'material'|'objects'|'view'|'more';
-type EditGroup='size'|'position'|'softness';
+type EditGroup='size'|'position'|'rotation'|'softness';
 type Control={key:string;label:string;value:number;min:number;max:number;step:number;unit:string;change:(value:number)=>void};
 type Action={label:string;icon:LucideIcon;run:()=>void;disabled?:boolean};
 type Props={
  panel:QuickPanel;model:FormModel;selected:string;shape?:FormShape;influence?:Influence;asset?:PlacedAsset;view:ViewMode;handles:boolean;
+ transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';onTransformMode:(mode:DirectTransformMode,axis?:'x'|'y'|'z')=>void;
  begin:()=>void;end:()=>void;onShape:(patch:Partial<FormShape>,live?:boolean)=>void;onBase:(patch:Partial<FormModel>,live?:boolean)=>void;onInfluence:(patch:Partial<Influence>,live?:boolean)=>void;onAsset:(patch:Partial<PlacedAsset>,live?:boolean)=>void;
  onLattice:(patch:Partial<LatticeSettings>,live?:boolean)=>void;
  onInsert:(kind:ShapeKind,operation:ShapeOperation)=>void;onAdvanced:()=>void;onClose:()=>void;onLibrary:()=>void;onProjects:()=>void;onDuplicate:()=>void;onRemove:()=>void;onSelect:(id:string)=>void;onView:(view:ViewMode)=>void;onCamera:(view:'front'|'top'|'perspective')=>void;onFit:()=>void;onHandles:()=>void;
@@ -27,14 +29,18 @@ const SHAPES:readonly {kind:ShapeKind;label:string;icon:LucideIcon}[]=[{kind:'bo
 const AXES=['x','y','z'] as const;
 
 export function MobileQuickWorkspace(props:Props){
- const [group,setGroup]=useState<EditGroup>('size'),[controlKey,setControlKey]=useState('width');
  const {panel,model,shape,influence,asset,selected}=props;
  const attachedCurve=!!shape&&model.attachments?.some(link=>link.sweepId===shape.id);
- const title=panel==='add'?'Add material':panel==='cut'?'Cut material':panel==='material'?'Material':panel==='objects'?'Objects':panel==='view'?'View':panel==='more'?'Workspace':shape?.name??asset?.name??influence?.name??'Base mass';
+ const hasSolid=hasQuickSolid(model),emptyEdit=panel==='edit'&&selected==='body'&&model.baseEnabled===false,emptyMaterial=panel==='material'&&!hasSolid,linkedCut=shape&&model.componentClearances?.find(link=>link.shapeId===shape.id),canDirect=!!(shape?.enabled&&!linkedCut&&!attachedCurve||asset?.visible||influence?.enabled);
+ const [group,setGroup]=useState<EditGroup>(()=>!linkedCut&&!attachedCurve&&(shape||asset||influence)&&props.transformMode==='move'?'position':!linkedCut&&!attachedCurve&&(shape||asset)&&props.transformMode==='rotate'?'rotation':'size'),[controlKey,setControlKey]=useState(()=>props.transformMode==='rotate'?'r'+(props.transformAxis??'z'):'width');
+ const title=panel==='add'||emptyEdit||emptyMaterial?'Add material':panel==='cut'?'Cut material':panel==='material'?'Material':panel==='objects'?'Objects':panel==='view'?'View':panel==='more'?'Workspace':shape?.name??asset?.name??influence?.name??'Base mass';
  const controls:Control[]=[];
  const add=(key:string,label:string,value:number,range:readonly[number,number],change:(value:number)=>void,step=.5,unit='mm')=>controls.push({key,label,value,min:range[0],max:range[1],change,step,unit});
  if(panel==='edit'){
-  if(group==='position'){
+  if(group==='rotation'){
+   const object=shape??asset;
+   if(object)for(const axis of AXES){const key=('r'+axis) as 'rx'|'ry'|'rz';add(key,axis.toUpperCase(),object[key],shape?SHAPE_LIMITS[key]:[-1000,1000],value=>shape?props.onShape({[key]:value},true):props.onAsset({[key]:value},true),1,'°');}
+  }else if(group==='position'){
    const object=shape??asset??influence;
    if(object)for(const axis of AXES)add(axis,axis.toUpperCase(),object[axis],shape?SHAPE_LIMITS[axis]:asset?[-1000,1000]:axis==='x'?[-120,120]:axis==='y'?[-65,65]:[-70,70],value=>shape?props.onShape({[axis]:value},true):asset?props.onAsset({[axis]:value},true):props.onInfluence({[axis]:value},true));
   }else if(shape){
@@ -65,30 +71,30 @@ export function MobileQuickWorkspace(props:Props){
   }else if(model.shell)add('wall','Wall',model.wall,LIMITS.wall,value=>props.onBase({wall:value},true),.1);
  }
  const active=controls.find(control=>control.key===controlKey)??controls[0];
- const changeGroup=(next:EditGroup)=>{props.end();setGroup(next);};
- const hasSolid=model.baseEnabled!==false||model.shapes?.some(item=>item.enabled&&item.operation==='union');
- const linkedCut=shape&&model.componentClearances?.find(link=>link.shapeId===shape.id);
+ const changeGroup=(next:EditGroup)=>{props.end();setGroup(next);if(next==='rotation')setControlKey('r'+(props.transformAxis??'z'));if(next==='softness'){if(props.handles)props.onHandles();}else if(canDirect)props.onTransformMode(next==='position'||influence?'move':next==='rotation'?'rotate':'size',next==='rotation'?props.transformAxis:undefined);};
+ const changeControl=(control:Control)=>{props.end();setControlKey(control.key);if(group==='rotation'&&canDirect)props.onTransformMode('rotate',control.key.slice(1) as 'x'|'y'|'z');};
  return <section className={'mobile-quick-workspace quick-'+panel} aria-label={panel==='edit'?'Quick object editor':title}>
-  <div className="quick-heading"><strong>{title}</strong>{(panel==='edit'||panel==='material')&&<button type="button" onClick={props.onAdvanced}><SlidersHorizontal size={15}/>Advanced</button>}<button type="button" aria-label="Close quick tools" onClick={props.onClose}><X size={18}/></button></div>
-  {(panel==='add'||panel==='cut')&&<>
+  <div className="quick-heading"><strong>{title}</strong>{((panel==='edit'&&!emptyEdit)||(panel==='material'&&!emptyMaterial)||panel==='objects')&&<button type="button" onClick={props.onAdvanced}><SlidersHorizontal size={15}/>Advanced</button>}<button type="button" aria-label="Close quick tools" onClick={props.onClose}><X size={18}/></button></div>
+  {(panel==='add'||panel==='cut'||emptyEdit||emptyMaterial)&&<>
    <div className="quick-shape-grid">{SHAPES.filter(item=>panel!=='cut'||item.kind!=='sweep').map(({kind,label,icon:Icon})=><button type="button" key={kind} disabled={(model.shapes?.length??0)>=32||(panel==='cut'&&!hasSolid)} onClick={()=>props.onInsert(kind,panel==='cut'?'subtract':'union')}><Icon size={24}/><span>{label}</span></button>)}</div>
    <div className="quick-links"><button type="button" onClick={props.onLibrary}><Layers size={17}/>Components & fields</button><button type="button" onClick={props.onProjects}><LayoutGrid size={17}/>Templates</button></div>
    <p className="quick-help">{panel==='cut'?hasSolid?'Pick a shape to remove material from the current form.':'Add a solid first, then cut its material.':'Pick a shape, then drag its handle or change its size.'}</p>
   </>}
-  {panel==='material'&&<>
+  {panel==='material'&&!emptyMaterial&&<>
    <div className="quick-edit-tabs" role="group" aria-label="Material structure">{(['solid','hollow','cellular'] as const).map(mode=><button type="button" key={mode} aria-pressed={mode===(model.lattice?.enabled?'cellular':model.shell?'hollow':'solid')} onClick={()=>props.onBase(materialModePatch(model,mode))}>{mode.charAt(0).toUpperCase()+mode.slice(1)}</button>)}</div>
    {model.lattice?.enabled&&<div className="quick-control-tabs" role="group" aria-label="Quick lattice pattern">{(['gyroid','diamond','honeycomb','octet'] as const).map(kind=><button type="button" key={kind} aria-pressed={model.lattice?.kind===kind} onClick={()=>props.onLattice({kind})}>{kind.charAt(0).toUpperCase()+kind.slice(1)}</button>)}</div>}
    {active?<><div className="quick-control-tabs" role="group" aria-label="Material parameter">{controls.map(control=><button type="button" key={control.key} aria-pressed={active.key===control.key} onClick={()=>{props.end();setControlKey(control.key);}}>{control.label}</button>)}</div><QuickValue key={'material'+active.key} control={active} begin={props.begin} end={props.end}/></>:<p className="quick-help">Choose Hollow or Cellular to remove material from the current form.</p>}
    {model.lattice?.enabled&&<p className="quick-help">{model.lattice.region?.enabled?'Existing lattice region is preserved. ':'Pattern follows the composed form. '}Thickness is nominal; strength has not been simulated.</p>}
   </>}
-  {panel==='edit'&&<>
-   <div className="quick-edit-tabs" role="group" aria-label="Quick editing mode">{(['size','position','softness'] as const).filter(mode=>mode!=='position'||!!(shape||asset||influence)).filter(mode=>mode!=='softness'||!!shape||selected==='body').map(mode=><button type="button" key={mode} aria-pressed={group===mode} onClick={()=>changeGroup(mode)}>{mode==='size'?'Size':mode==='position'?'Move':'Soften'}</button>)}<button type="button" aria-label="Move selected object on canvas" aria-pressed={props.handles} onClick={props.onHandles}><Move size={17}/></button></div>
+  {panel==='edit'&&!emptyEdit&&<>
+   <div className="quick-edit-tabs" role="group" aria-label="Quick editing mode">{(['size','position','rotation','softness'] as const).filter(mode=>mode!=='position'||!attachedCurve&&!!(shape||asset||influence)).filter(mode=>mode!=='rotation'||!attachedCurve&&!!(shape||asset)).filter(mode=>mode!=='softness'||!!shape||selected==='body').map(mode=><button type="button" key={mode} disabled={!!linkedCut} aria-pressed={group===mode} onClick={()=>changeGroup(mode)}>{mode==='size'?influence?'Field':'Size':mode==='position'?'Move':mode==='rotation'?'Rotate':'Soften'}</button>)}</div>
+   {canDirect&&group!=='softness'&&props.handles&&<p className="quick-transform-cue">{influence?'Drag grip to move field.':group==='rotation'?'Drag circle to rotate around '+(props.transformAxis??'z').toUpperCase()+'.':group==='position'?'Drag grip to move in the view plane.':'Drag square to scale uniformly.'}</p>}
    {linkedCut?<div className="quick-linked-cut"><p>This cut follows its component clearance.</p><button type="button" onClick={()=>props.onSelect(linkedCut.assetId)}>Edit component clearance</button></div>:active?<>
-    <div className="quick-control-tabs" role="group" aria-label="Quick parameter">{controls.map(control=><button type="button" key={control.key} aria-pressed={active.key===control.key} onClick={()=>{props.end();setControlKey(control.key);}}>{control.label}</button>)}</div>
+    <div className="quick-control-tabs" role="group" aria-label="Quick parameter">{controls.map(control=><button type="button" key={control.key} aria-pressed={active.key===control.key} onClick={()=>changeControl(control)}>{control.label}</button>)}</div>
     <QuickValue key={selected+active.key} control={active} begin={props.begin} end={props.end}/>
    </>:<p className="quick-help">Open advanced controls to edit this part.</p>}
    {shape&&<div className="quick-shape-actions"><div role="group" aria-label="Quick shape operation">{(['union','subtract','intersect'] as const).map(operation=><button type="button" key={operation} disabled={!!linkedCut} aria-pressed={shape.operation===operation} onClick={()=>props.onShape({operation})}>{operation==='union'?'Add':operation==='subtract'?'Cut':'Keep'}</button>)}</div><button type="button" aria-label="Duplicate selected shape" disabled={(model.shapes?.length??0)>=32} onClick={props.onDuplicate}><Copy size={17}/></button><button type="button" aria-label="Remove selected shape" onClick={props.onRemove}><Trash2 size={17}/></button></div>}
-   {attachedCurve&&<p className="quick-help">Span follows attached endpoints. Advanced edits the curve and its connections.</p>}
+   {attachedCurve&&<p className="quick-help">This curve is pinned to its endpoints. Change its section here; Advanced edits the path and connections.</p>}
   </>}
   {panel==='view'&&<>
    <div className="quick-view-grid">{(['solid','field','section','silhouette'] as const).map(mode=><button type="button" key={mode} aria-pressed={props.view===mode} onClick={()=>props.onView(mode)}>{mode==='solid'?'Studio':mode.charAt(0).toUpperCase()+mode.slice(1)}</button>)}</div>
