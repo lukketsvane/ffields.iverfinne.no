@@ -6,6 +6,8 @@ import {cloneModel,DEFAULT_MODEL,generateMesh,generatePreviewMesh,evaluateBase,c
 import {compileShape,makeShape} from '../lib/shapes.ts';
 import {previewAmbientOcclusion} from '../lib/preview-shading.ts';
 import {previewRefinement} from '../lib/preview-scheduler.ts';
+import {createCameraPodStudy} from '../lib/camera-pod-study.ts';
+import {generateMeshAsync} from '../lib/form-engine.ts';
 
 test('worker-side AO preserves the existing field shading and can abort between probes',async()=>{
  const model={...cloneModel(DEFAULT_MODEL),influences:[],asymmetry:0,baseEnabled:false,shapes:[{...makeShape('torus'),x:0,y:0,z:0,blend:0,width:32,height:12,depth:32,roundness:.4}]},mesh=generateMesh(model,32),before=JSON.stringify(model),shapes=model.shapes.map(compileShape),expected=new Float32Array(mesh.positions.length/3);
@@ -36,5 +38,33 @@ test('real worker protocol cancels an in-progress preview, then completes the ne
   const settled=messages.at(-1).message;assert.deepEqual(settled.mesh,generateMesh(model,28,previewRefinement(false)));assert.equal(settled.ao.length,settled.mesh.positions.length/3);assert.equal(messages.at(-1).options.transfer.length,4);
   await surface.onmessage({data:{id:4,model,resolution:28,task:'audit',draft:true,shading:true}});
   const audit=messages.at(-1).message;assert.equal(audit.id,4);assert.equal(audit.mesh,undefined);assert.equal(audit.check.audit.triangles,generateMesh(model,28).indices.length/3);assert.equal(audit.check.audit.boundaryEdges,0);
+ }finally{if(previous===undefined)delete globalThis.self;else globalThis.self=previous;}
+});
+
+test('fine surface streaming includes every current camera component before refinement without changing final geometry',async()=>{
+ const model=createCameraPodStudy(),before=JSON.stringify(model),frames=[];
+ const final=await generateMeshAsync(model,32,previewRefinement(false),undefined,{budgetMs:8,yieldControl:async()=>{},onSurface:mesh=>frames.push(mesh)});
+ assert.equal(frames.length,1,'only the complete model is streamed');
+ assert.deepEqual(frames[0],generateMesh(model,32),'the intermediate frame has accurate roots at the same fine grid');
+ assert.deepEqual(frames[0].components.map(c=>c.id),['body','colani-lens-plate']);
+ assert.deepEqual(final,generateMesh(model,32,previewRefinement(false)),'streaming cannot change the final mesh or component-scoped refinement');
+ assert.ok(final.components.every(c=>c.refinement));assert.equal(JSON.stringify(model),before);
+ const controller=new AbortController();let count=0;
+ await assert.rejects(generateMeshAsync(model,32,previewRefinement(false),undefined,{signal:controller.signal,yieldControl:async()=>{},onSurface:()=>{count++;controller.abort();}}),{name:'AbortError'});
+ assert.equal(count,1,'superseding the streamed surface stops the actual queued refinement');
+});
+
+test('worker intermediate fine surface does not transfer live refinement buffers or masquerade as a completed result',async()=>{
+ const workerUrl=new URL('../lib/form-worker.ts',import.meta.url),source=await readFile(workerUrl,'utf8');
+ const resolved=source.replace(/from '\.\/([^']+)'/g,(_match,name)=>`from '${new URL(name+'.ts',workerUrl).href}'`),output=ts.transpileModule(resolved,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText;
+ const messages=[],surface={onmessage:null,postMessage:(message,options)=>messages.push({message,options})},previous=globalThis.self;globalThis.self=surface;
+ try{
+  await import('data:text/javascript;base64,'+Buffer.from(output+'\n// intermediate-stage-test').toString('base64'));
+  const model={...cloneModel(DEFAULT_MODEL),influences:[],asymmetry:0};
+  await surface.onmessage({data:{id:81,model,resolution:28,streamSurface:true,shading:true}});
+  assert.equal(messages.length,2);assert.equal(messages[0].message.stage,'surface');assert.equal(messages[0].message.id,81);
+  assert.equal(messages[0].options,undefined,'intermediate buffers remain owned by refinement');
+  assert.deepEqual(messages[0].message.mesh,generateMesh(model,28));
+  assert.equal(messages[1].message.stage,undefined);assert.ok(messages[1].message.ao);assert.equal(messages[1].options.transfer.length,4);
  }finally{if(previous===undefined)delete globalThis.self;else globalThis.self=previous;}
 });

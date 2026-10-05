@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><title>Mobile workspace verification</title>
+<style>body{margin:0;background:#171719;color:#eee;font:14px system-ui}header{height:40px;display:flex;align-items:center;gap:16px;padding:0 16px}select{font:inherit;padding:4px}iframe{display:block;border:0;margin:0 auto;width:390px;height:844px}label{display:flex;align-items:center;gap:8px}</style>
+<header><label>Viewport <select id="size"><option value="390,844">390 × 844</option><option value="320,568">320 × 568</option><option value="844,390">844 × 390</option></select></label><label>Application <select id="source"><option value="/">Preview</option><option value="https://ffields.iverfinne.no/">Published</option></select></label><span>Responsive verification</span></header>
+<iframe title="Mobile editor" src="/"></iframe>
+<script>document.querySelector('#size').onchange=e=>{const [w,h]=e.target.value.split(',');const frame=document.querySelector('iframe');frame.style.width=w+'px';frame.style.height=h+'px'};document.querySelector('#source').onchange=e=>document.querySelector('iframe').src=e.target.value</script>

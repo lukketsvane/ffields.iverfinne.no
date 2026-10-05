@@ -97,3 +97,12 @@ test('hollow and solid do not allocate a hidden lattice before the first visible
  }
  assert.deepEqual(blank,before);
 });
+
+// A nudge changes the chosen increment; it must retain the authored remainder.
+test('numeric nudges retain submillimetre authored fractions and clamp only at an actual limit',()=>{
+ const value=40.000125;
+ assert.equal(scrubKeyValue(value,2,280,.5,'ArrowRight'),value+.5);
+ assert.equal(scrubKeyValue(value,2,280,.5,'ArrowLeft'),value-.5);
+ assert.equal(scrubKeyValue(2.0000001,2,280,.5,'ArrowLeft'),2);
+ assert.equal(scrubKeyValue(279.9999999,2,280,.5,'ArrowRight'),280);
+});
