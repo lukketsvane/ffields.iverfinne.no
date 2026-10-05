@@ -9,6 +9,8 @@ Both viewports now use one shared settled policy: 128–136 grid resolution on
 coarse-pointer devices, 160–164 elsewhere, followed by up to three conforming
 surface-refinement passes (.04 field residual target, 350,000 triangle budget).
 Interactive drafts keep their previous adaptive budget and four-pass edge roots.
+New geometry and camera presets also preempt an obsolete partially painted
+software frame, instead of waiting for its dense triangles to finish.
 The existing latest-revision queue, worker cancellation and cooperative fallback
 also apply during refinement. No new control or confirmation is required.
 
