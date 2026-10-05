@@ -5,6 +5,18 @@ import {DEFAULT_LATTICE} from './lattice.ts';
 
 const bounded=(value:number,min:number,max:number)=>Math.min(max,Math.max(min,value));
 
+export function hasQuickSolid(model:FormModel):boolean {
+ return model.baseEnabled!==false||!!model.shapes?.some(shape=>shape.enabled&&shape.operation==='union');
+}
+
+/** Opening quick tools always presents an actionable first tray, even after
+ * deleting the last part or arriving from an export-quality inspector. */
+export function quickEntryPanel(model:FormModel,selected:string):'edit'|'objects'|'add' {
+ if(model.shapes?.some(shape=>shape.id===selected)||model.assets?.some(asset=>asset.id===selected)||model.influences.some(field=>field.id===selected))return 'edit';
+ if(!hasQuickSolid(model))return 'add';
+ return selected==='body'&&model.baseEnabled!==false?'edit':'objects';
+}
+
 /** Continuous sliders retain arbitrary authored values; keyboard nudges keep
  * the editor's chosen increment rather than the browser's implicit grid. */
 export function scrubKeyValue(value:number,min:number,max:number,step:number,key:string):number|undefined {

@@ -2,8 +2,10 @@ import {componentEnvelopeDimensions,validateComponentClearances} from './compone
 import type {ComponentOpening} from './component-clearance.ts';
 import type {PlacedAsset} from './assets.ts';
 import type {FormModel,MeshData} from './form-engine.ts';
-import {auditMesh} from './mesh-audit.ts';
+import {auditMesh,auditMeshAsync} from './mesh-audit.ts';
 import type {MeshAudit} from './mesh-audit.ts';
+import {drainSteps} from './cooperative-task.ts';
+import type {CooperativeTaskOptions} from './cooperative-task.ts';
 
 export type ComponentFitStatus='clear'|'interference'|'unverified';
 export type ComponentFitBoxResult={status:ComponentFitStatus;surfaceTriangleCount:number;firstTriangle:number|null;centreInside:boolean|null};
@@ -62,9 +64,10 @@ function solidAngle(ax:number,ay:number,az:number,bx:number,by:number,bz:number,
  return 2*Math.atan2(determinant,denominator);
 }
 
-function inspectBox(mesh:MeshData,probe:Box):ComponentFitBoxResult {
+function* inspectBoxSteps(mesh:MeshData,probe:Box):Generator<void,ComponentFitBoxResult,void> {
  const {positions:p,indices}=mesh,bounds=probe.bounds;let surfaceTriangleCount=0,firstTriangle:number|null=null,winding=0,correction=0;
  for(let offset=0;offset<indices.length;offset+=3){
+  if(offset&&offset%384===0)yield;
   const ai=indices[offset]*3,bi=indices[offset+1]*3,ci=indices[offset+2]*3,ax=p[ai],ay=p[ai+1],az=p[ai+2],bx=p[bi],by=p[bi+1],bz=p[bi+2],cx=p[ci],cy=p[ci+1],cz=p[ci+2];
   const angle=solidAngle(ax,ay,az,bx,by,bz,cx,cy,cz,probe.center)-correction,next=winding+angle;correction=(next-winding)-angle;winding=next;
   // World AABB rejects most faces before rotation and the complete SAT. No
@@ -76,28 +79,43 @@ function inspectBox(mesh:MeshData,probe:Box):ComponentFitBoxResult {
  return {status:surfaceTriangleCount>0||centreInside?'interference':'clear',surfaceTriangleCount,firstTriangle,centreInside};
 }
 
+function* finiteCoordinates(values:Float32Array):Generator<void,boolean,void> {
+ for(let i=0;i<values.length;i++){if(!Number.isFinite(values[i]))return false;if((i+1)%512===0)yield;}
+ return true;
+}
+function* invalidTriangleIndex(indices:Uint32Array,vertices:number):Generator<void,boolean,void> {
+ for(let i=0;i<indices.length;i++){
+  const index=indices[i];if(!Number.isInteger(index)||index<0||index>=vertices)return true;
+  if((i+1)%512===0)yield;
+ }
+ return false;
+}
+
 /** Private to the combined audit: an external/stale report cannot establish
  * closure of different arrays, including same-size open or collapsed meshes. */
-function fitAgainstAudit(model:FormModel,mesh:MeshData,meshAudit:MeshAudit):ComponentFitAudit {
+function* fitAgainstAuditSteps(model:FormModel,mesh:MeshData,meshAudit:MeshAudit):Generator<void,ComponentFitAudit,void> {
  validateComponentClearances(model);
+ yield;
  const reasons:string[]=[];
  const vertices=mesh.positions.length/3,triangles=mesh.indices.length/3;
  if(!triangles||!vertices||!meshAudit.triangles||!meshAudit.components)reasons.push('Empty mesh');
  if(meshAudit.vertices!==vertices||meshAudit.triangles!==triangles)reasons.push('Mesh audit does not match captured arrays');
- if(!meshAudit.finite||!Number.isInteger(vertices)||!mesh.positions.every(Number.isFinite)||!mesh.normals.every(Number.isFinite))reasons.push('Non-finite mesh coordinates or normals');
- if(meshAudit.invalidIndices||!Number.isInteger(triangles)||mesh.indices.some(index=>!Number.isInteger(index)||index<0||index>=vertices))reasons.push('Invalid triangle indices');
+ if(!meshAudit.finite||!Number.isInteger(vertices)||!(yield* finiteCoordinates(mesh.positions))||!(yield* finiteCoordinates(mesh.normals)))reasons.push('Non-finite mesh coordinates or normals');
+ if(meshAudit.invalidIndices||!Number.isInteger(triangles)||(yield* invalidTriangleIndex(mesh.indices,vertices)))reasons.push('Invalid triangle indices');
  if(meshAudit.boundaryEdges)reasons.push('Open mesh edges');
  if(meshAudit.nonManifoldEdges)reasons.push('Non-manifold mesh edges');
  if(meshAudit.inconsistentWindingEdges)reasons.push('Inconsistent triangle winding');
  if(meshAudit.degenerateTriangles)reasons.push('Degenerate triangles');
  const meshVerified=reasons.length===0,links=new Map((model.componentClearances??[]).map(link=>[link.assetId,link]));
- const components=(model.assets??[]).map(asset=>{
+ const components:ComponentFitRow[]=[];
+ for(const asset of model.assets??[]){
   const link=links.get(asset.id),samplingAllowance=link?COMPONENT_FIT_SAMPLING_ALLOWANCE:0,envelope=componentEnvelopeDimensions(asset).map(dimension=>dimension*asset.scale) as Vector,testedClearance=axes.map(axis=>Math.max(0,(link?.clearance[axis]??0)-samplingAllowance)) as Vector;
-  const transformValid=[asset.x,asset.y,asset.z,asset.rx,asset.ry,asset.rz,asset.scale,...envelope,...testedClearance].every(Number.isFinite)&&asset.scale>0&&envelope.every(value=>value>0),seat=meshVerified&&transformValid?inspectBox(mesh,box(asset,envelope,testedClearance)):unverified();
-  const insertion=link?.opening&&link.opening.travel>0?{...link.opening,...(meshVerified&&transformValid?inspectBox(mesh,box(asset,envelope,testedClearance,link.opening)):unverified())}:undefined;
+  const transformValid=[asset.x,asset.y,asset.z,asset.rx,asset.ry,asset.rz,asset.scale,...envelope,...testedClearance].every(Number.isFinite)&&asset.scale>0&&envelope.every(value=>value>0),seat=meshVerified&&transformValid?(yield* inspectBoxSteps(mesh,box(asset,envelope,testedClearance))):unverified();
+  const insertion=link?.opening&&link.opening.travel>0?{...link.opening,...(meshVerified&&transformValid?(yield* inspectBoxSteps(mesh,box(asset,envelope,testedClearance,link.opening))):unverified())}:undefined;
   const status:ComponentFitStatus=seat.status==='unverified'||insertion?.status==='unverified'?'unverified':seat.status==='interference'||insertion?.status==='interference'?'interference':'clear';
-  return {assetId:asset.id,name:asset.name,visible:asset.visible,envelope,testedClearance,samplingAllowance,seat,...(insertion?{insertion}:{}),status};
- });
+  components.push({assetId:asset.id,name:asset.name,visible:asset.visible,envelope,testedClearance,samplingAllowance,seat,...(insertion?{insertion}:{}),status});
+  yield;
+ }
  return {components,samplingAllowance:COMPONENT_FIT_SAMPLING_ALLOWANCE,meshVerified,reasons};
 }
 
@@ -106,7 +124,15 @@ function fitAgainstAudit(model:FormModel,mesh:MeshData,meshAudit:MeshAudit):Comp
  * describes those boxes and this mesh, not device identity or physical fit.
  * Open/invalid/non-manifold/degenerate boundaries require further review. */
 export function auditExportMesh(model:FormModel,mesh:MeshData):ExportMeshAudit {
- const audit=auditMesh(mesh);return {audit,componentFit:fitAgainstAudit(model,mesh,audit)};
+ const audit=auditMesh(mesh),steps=fitAgainstAuditSteps(model,mesh,audit);
+ for(;;){const step=steps.next();if(step.done)return {audit,componentFit:step.value};}
+}
+
+/** Cooperatively audit topology once and check every seat/insertion triangle in
+ * the original order. No external report can establish captured-mesh closure. */
+export async function auditExportMeshAsync(model:FormModel,mesh:MeshData,options:CooperativeTaskOptions={}):Promise<ExportMeshAudit> {
+ const audit=await auditMeshAsync(mesh,options),componentFit=await drainSteps(fitAgainstAuditSteps(model,mesh,audit),options);
+ return {audit,componentFit};
 }
 
 /** Standalone fit check always audits the captured mesh itself. */
