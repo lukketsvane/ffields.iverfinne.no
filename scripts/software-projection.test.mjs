@@ -1,10 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fitSoftwareCamera,pickSoftwareSurface,projectSoftwareMesh,projectSoftwarePoint,softwareBasis,softwarePlaneDelta,softwareView,softwareTriangleGradient,softwarePreviewResolution,softwareInteractionShouldCancel} from '../lib/software-projection.ts';
+import {fitSoftwareCamera,pickSoftwareSurface,projectSoftwareMesh,projectSoftwarePoint,softwareBasis,softwarePlaneDelta,softwareCameraRay,softwareView,softwareTriangleGradient,softwarePreviewResolution,softwareInteractionShouldCancel} from '../lib/software-projection.ts';
 import {cloneModel,DEFAULT_MODEL} from '../lib/form-engine.ts';
 
 const frame={width:390,height:640},camera={center:{x:8,y:-3,z:11},yaw:.62,pitch:.34,scale:4};
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,`${a} should equal ${b}`);
+
+test('current-field camera rays preserve screen coordinates after orbit, zoom and pan',()=>{
+ const bounds=[-120,-30,-24,75,90,48];
+ for(const cam of [camera,softwareView(camera,'front'),softwareView(camera,'top'),{...camera,scale:.25,center:{x:200,y:-80,z:32}}]){
+  const ray=softwareCameraRay(cam,frame,83,412,bounds);assert.ok(ray);
+  for(const distance of [0,10,200]){
+   const p=projectSoftwarePoint({x:ray.origin.x+ray.direction.x*distance,y:ray.origin.y+ray.direction.y*distance,z:ray.origin.z+ray.direction.z*distance},cam,frame);
+   near(p.x,83);near(p.y,412);
+  }
+  const origin=projectSoftwarePoint(ray.origin,cam,frame);
+  for(let bits=0;bits<8;bits++)assert.ok(origin.depth>projectSoftwarePoint({x:bounds[bits&1?3:0],y:bounds[bits&2?4:1],z:bounds[bits&4?5:2]},cam,frame).depth);
+ }
+ assert.equal(softwareCameraRay({...camera,scale:0},frame,83,412,bounds),undefined);
+ assert.equal(softwareCameraRay(camera,frame,NaN,412,bounds),undefined);
+});
 
 test('software orbit basis keeps finger movement on the camera plane without a snap',()=>{
  const {right,up,forward}=softwareBasis(camera),dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;

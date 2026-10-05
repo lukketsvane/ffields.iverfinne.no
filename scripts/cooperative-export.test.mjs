@@ -31,16 +31,18 @@ test('refinement and STL serialization remain cancellable during their actual he
  await assert.rejects(binarySTLAsync(mesh,{...controlled(()=>{if(++yields===2)stlController.abort();}),signal:stlController.signal}),{name:'AbortError'});assert.equal(yields,2);
 });
 
-test('no-worker fallback retains full220 resolution and exact refined audit/STL outputs',async()=>{
- const input=model(),before=JSON.stringify(input),refinement={tolerance:.12,maxPasses:2,maxTriangles:900000},mesh=generateMesh(input,220,refinement),expected=auditExportMesh(input,mesh);let abort,yields=0;
- const result=await runExportMeshJob(input,true,'stl',value=>abort=value,{createWorker:()=>{throw Error('Module workers blocked');},...controlled(()=>yields++)});
+test('no-worker fallback retains full220 resolution and exact refined audit/STL outputs with genuine stage changes',async()=>{
+ const input=model(),before=JSON.stringify(input),refinement={tolerance:.12,maxPasses:2,maxTriangles:900000},mesh=generateMesh(input,220,refinement),expected=auditExportMesh(input,mesh);let abort,yields=0;const stages=[];
+ const result=await runExportMeshJob(input,true,'stl',value=>abort=value,{createWorker:()=>{throw Error('Module workers blocked');},onProgress:progress=>stages.push(progress),...controlled(()=>yields++)});
  assert.deepEqual(result.check.audit,expected.audit);assert.deepEqual(result.check.componentFit,expected.componentFit);assert.deepEqual(result.check.sampling,mesh.sampling);assert.equal(result.check.sampling.resolution,220);assert.deepEqual(result.check.refinement,mesh.refinement);assert.deepEqual(result.stl,binarySTL(mesh));assert.equal(abort,null);assert.ok(yields>10);assert.equal(JSON.stringify(input),before);
+ assert.deepEqual(stages,[{stage:'generating'},{stage:'refining'},{stage:'checking'},{stage:'writing'}]);
 });
 
 test('failed workers fall back once and cancellation remains live after meshing has started',async()=>{
- let abort,terminated=0,posted=0,yields=0;const fake={onmessage:null,onerror:null,postMessage(){posted++;queueMicrotask(()=>fake.onerror({}));},terminate(){terminated++;}};
- const result=await runExportMeshJob(model(),false,'audit',value=>abort=value,{createWorker:()=>fake,...controlled(()=>yields++)});
+ let abort,terminated=0,posted=0,yields=0;const stages=[],fake={onmessage:null,onerror:null,postMessage(){posted++;queueMicrotask(()=>{fake.onmessage({data:{progress:{stage:'generating'}}});fake.onerror({});fake.onmessage({data:{progress:{stage:'writing'}}});fake.onerror({});});},terminate(){terminated++;}};
+ const result=await runExportMeshJob(model(),false,'audit',value=>abort=value,{createWorker:()=>fake,onProgress:progress=>stages.push(progress.stage),...controlled(()=>yields++)});
  assert.equal(posted,1);assert.equal(terminated,1);assert.equal(result.check.sampling.resolution,220);assert.ok(result.check.audit.triangles>0);assert.ok(yields>10);assert.equal(abort,null);
+ assert.deepEqual(stages,['generating','generating','checking'],'fallback reports its own real restart and ignores detached worker updates');
  let cancel,entered=0;
  await assert.rejects(runExportMeshJob(model(),true,'audit',value=>cancel=value,{createWorker:null,...controlled(()=>{if(++entered===3)cancel();})}),{name:'AbortError'});
  assert.equal(entered,3);assert.equal(cancel,null);
@@ -61,4 +63,31 @@ test('the default no-worker fallback delivers real timer input before a full-res
  const timer=setTimeout(()=>{inputDelivered=true;controller.abort();},0);
  try{await assert.rejects(pending,{name:'AbortError'});assert.equal(inputDelivered,true);assert.equal(abort,null);}
  finally{clearTimeout(timer);}
+});
+
+test('worker progress is validated, never completes the job and stops after the final result',async()=>{
+ let abort,settled=false,terminated=0;const stages=[],worker={onmessage:null,onerror:null,postMessage(){},terminate(){terminated++;}};
+ const pending=runExportMeshJob(model(),true,'stl',value=>abort=value,{createWorker:()=>worker,onProgress:progress=>stages.push(progress)});
+ pending.then(()=>settled=true);
+ for(const progress of [{stage:'generating'},{stage:'invented'},{stage:'refining',completed:Infinity,total:10},{stage:'checking',completed:12,total:10},{stage:'refining',completed:2,total:10}])worker.onmessage({data:{id:1,progress}});
+ await Promise.resolve();assert.equal(settled,false);assert.equal(typeof abort,'function');assert.equal(terminated,0);
+ assert.deepEqual(stages,[{stage:'generating'},{stage:'refining',completed:2,total:10}]);
+ const check={audit:{triangles:1},milliseconds:8},stl=new ArrayBuffer(4);worker.onmessage({data:{id:1,check,stl}});
+ assert.deepEqual(await pending,{check,stl});assert.equal(abort,null);assert.equal(terminated,1);
+ worker.onmessage({data:{id:1,progress:{stage:'writing'}}});assert.equal(stages.length,2);
+});
+
+test('worker cancellation drops late progress and results without restarting work',async()=>{
+ let abort,terminated=0;const stages=[],worker={onmessage:null,onerror:null,postMessage(){},terminate(){terminated++;}};
+ const pending=runExportMeshJob(model(),false,'stl',value=>abort=value,{createWorker:()=>worker,onProgress:progress=>stages.push(progress.stage),yieldControl:async()=>assert.fail('cancellation must not restart fallback')});
+ worker.onmessage({data:{progress:{stage:'generating'}}});abort();
+ worker.onmessage({data:{progress:{stage:'writing'}}});worker.onmessage({data:{check:{}}});worker.onerror({});
+ await assert.rejects(pending,{name:'AbortError'});assert.deepEqual(stages,['generating']);assert.equal(terminated,1);assert.equal(abort,null);
+});
+
+test('a cooperative cancellation has no later stage reports',async()=>{
+ let abort,yields=0;const stages=[];
+ const pending=runExportMeshJob(model(),true,'stl',value=>abort=value,{createWorker:null,onProgress:progress=>stages.push(progress.stage),...controlled(()=>{if(++yields===2)abort();})});
+ await assert.rejects(pending,{name:'AbortError'});await Promise.resolve();
+ assert.deepEqual(stages,['generating']);assert.equal(yields,2);assert.equal(abort,null);
 });
