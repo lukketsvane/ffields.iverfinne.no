@@ -43,6 +43,13 @@ sync/async contours. Lighting probes no longer run on the input thread.
 The existing on-device save, offline PWA and stable framing remain in use.
 Only explicit Fit or camera view commands change framing.
 
+When WebGL is unavailable, a Canvas2D viewport draws the actual worker mesh,
+supports surface selection, move grips, orbit/pan/zoom and evaluated sections.
+Complete frame buffers retain the last visible surface during painting;
+4,000-triangle blocks with an 8 ms budget leave room for input. This path has
+lower preview detail and omits imported GLTF meshes, GPU field colours and
+animated ripple displacement. Export still uses the same authoritative engine.
+
 ## Reference decisions
 
 [nTop lightweighting](https://resources.ntop.com/resources/blog/design-tips-structural-optimization-lightweighting/)
@@ -61,6 +68,16 @@ or thermal performance from a lattice's appearance.
 Focused checks exercise real worker cancellation, newest-result scheduling,
 sync/async mesh and section equality, authoritative export behavior, bounded
 sweep scaling, surface selection and protected component handles.
+The complete suite passed 188/188 tests. TypeScript and the production build
+passed. Scoped lint had zero errors; the existing page/engine warnings and
+viewport hook warnings remain. Software projection checks cover camera-plane
+drag offsets, explicit framing and taps on the displayed front surface.
+
+The deployed compact UI passed blank construction → box insertion → width
+90 → one undo back to 64 → cylinder cut. Material checks changed cell size to
+12, selected Diamond and cutaway 60%, and retained those settings through
+Solid → Cellular. Live checking caught and fixed native range rounding and
+first-time cellular cutaway after shelling.
 
 A local stereo draft at grid 28 produced 11,124 triangles: the full root
 policy took about 420 ms and the draft policy about 288 ms. This is a
@@ -68,8 +85,9 @@ workspace comparison, not a phone timing claim. Immediate grips remain
 necessary while a complex surface evaluates.
 
 The available cloud browser does not supply WebGL or phone viewport
-emulation. Live UI checks can verify Quick tools and model state; they cannot
-prove iPhone GPU performance, real multitouch or a physical printed fit.
+emulation. Live UI checks can verify Quick tools, model state and the software
+surface; they cannot prove iPhone GPU performance, real multitouch or a
+physical printed fit.
 The next round should use a real phone to measure input latency and refine
 direct sizing/rotation and local cellular region handles. GPU implicit
 display remains a larger follow-up; geometry and export must share intent.

@@ -5,9 +5,19 @@ import {DEFAULT_LATTICE} from './lattice.ts';
 
 const bounded=(value:number,min:number,max:number)=>Math.min(max,Math.max(min,value));
 
+/** Continuous sliders retain arbitrary authored values; keyboard nudges keep
+ * the editor's chosen increment rather than the browser's implicit grid. */
+export function scrubKeyValue(value:number,min:number,max:number,step:number,key:string):number|undefined {
+ if(key==='Home')return min;if(key==='End')return max;
+ const direction=key==='ArrowRight'||key==='ArrowUp'?1:key==='ArrowLeft'||key==='ArrowDown'?-1:key==='PageUp'?10:key==='PageDown'?-10:0;
+ return direction?bounded(Math.round((value+direction*step)*1000)/1000,min,max):undefined;
+}
+
 /** Mode changes retain authored cell/skin/region settings for the next visit. */
 export function materialModePatch(model:FormModel,mode:'solid'|'hollow'|'cellular'):Partial<FormModel> {
- return {shell:mode==='hollow',lattice:{...(model.lattice??DEFAULT_LATTICE),enabled:mode==='cellular',...(!model.lattice&&mode==='cellular'?{reveal:.6}:{})}};
+ const shell=mode==='hollow';
+ if(model.lattice)return {shell,lattice:{...model.lattice,enabled:mode==='cellular'}};
+ return mode==='cellular'?{shell,lattice:{...DEFAULT_LATTICE,enabled:true,reveal:.6}}:{shell};
 }
 
 /** A touch insertion begins where the person is working, with a useful cut

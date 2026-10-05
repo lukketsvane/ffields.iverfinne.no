@@ -6,7 +6,7 @@ import {LIMITS} from '@/lib/form-engine';
 import type {FormModel,Influence} from '@/lib/form-engine';
 import {SHAPE_LIMITS,shapeBounds} from '@/lib/shapes';
 import type {FormShape,ShapeKind,ShapeOperation} from '@/lib/shapes';
-import {materialModePatch,scaleSweep,sweepScaleLimits} from '@/lib/quick-modelling';
+import {materialModePatch,scaleSweep,scrubKeyValue,sweepScaleLimits} from '@/lib/quick-modelling';
 import type {PlacedAsset} from '@/lib/assets';
 import {LATTICE_LIMITS} from '@/lib/lattice';
 import type {LatticeSettings} from '@/lib/lattice';
@@ -106,7 +106,7 @@ function QuickValue({control,begin,end}:{control:Control;begin:()=>void;end:()=>
  const nudge=(direction:number)=>{begin();control.change(Math.min(control.max,Math.max(control.min,Math.round((control.value+direction*control.step)*1000)/1000)));end();};
  return <div className="quick-value">
   <div className="quick-value-line"><button type="button" aria-label={'Decrease '+control.label} disabled={control.value<=control.min} onClick={()=>nudge(-1)}><Minus size={18}/></button><label><span>{control.label}</span><input aria-label={'Quick '+control.label+' value'} inputMode="decimal" type="number" min={control.min} max={control.max} step={control.step} value={draft??String(Math.round(control.value*100)/100)} onFocus={()=>{cancelled.current=false;setDraft(String(Math.round(control.value*100)/100));begin();}} onChange={event=>setDraft(event.target.value)} onBlur={finish} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur();if(event.key==='Escape'){cancelled.current=true;event.currentTarget.blur();}}}/><small>{control.unit}</small></label><button type="button" aria-label={'Increase '+control.label} disabled={control.value>=control.max} onClick={()=>nudge(1)}><Plus size={18}/></button>{draft!==null&&<button type="button" className="quick-value-done" aria-label="Finish value edit" onClick={event=>{event.currentTarget.parentElement?.querySelector('input')?.blur();}}><Check size={18}/></button>}</div>
-  <input className="quick-range" aria-label={'Quick '+control.label} type="range" min={control.min} max={control.max} step={control.step} value={control.value} onPointerDown={begin} onChange={event=>control.change(Number(event.target.value))} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onBlur={end} onKeyDown={event=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))begin();}} onKeyUp={end}/>
+  <input className="quick-range" aria-label={'Quick '+control.label} type="range" min={control.min} max={control.max} step="any" value={control.value} onPointerDown={begin} onChange={event=>control.change(Number(event.target.value))} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onBlur={end} onKeyDown={event=>{const value=scrubKeyValue(control.value,control.min,control.max,control.step,event.key);if(value!==undefined){event.preventDefault();begin();control.change(value);}}} onKeyUp={end}/>
  </div>;
 }
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {materialModePatch,quickShape,scaleSweep,sweepScaleLimits} from '../lib/quick-modelling.ts';
+import {materialModePatch,quickShape,scaleSweep,scrubKeyValue,sweepScaleLimits} from '../lib/quick-modelling.ts';
 import {blankConstruction,applyConstructionCommand} from '../lib/construction.ts';
 import {DEFAULT_MODEL,cloneModel,validateModel} from '../lib/form-engine.ts';
 import {makeShape,evaluateShape,shapeBounds} from '../lib/shapes.ts';
@@ -57,4 +57,27 @@ test('material mode changes preserve authored lattice settings and region while 
  }
  assert.deepEqual(source,before);
  const first={...blankConstruction(),...materialModePatch(blankConstruction(),'cellular')};validateModel(first);assert.equal(first.lattice.reveal,.6);
+});
+
+test('continuous scrub keyboard nudges preserve arbitrary authored values without snapping to a global step grid',()=>{
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'ArrowRight'),24.82);
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'ArrowLeft'),23.82);
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'PageUp'),29.32);
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'PageDown'),19.32);
+ assert.equal(scrubKeyValue(239.8,4,240,.5,'ArrowUp'),240);
+ assert.equal(scrubKeyValue(4.1,4,240,.5,'ArrowDown'),4);
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'Home'),4);
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'End'),240);
+ assert.equal(scrubKeyValue(24.32,4,240,.5,'Tab'),undefined);
+});
+
+test('hollow and solid do not allocate a hidden lattice before the first visible cellular mode',()=>{
+ const blank=blankConstruction(),before=structuredClone(blank);
+ for(const mode of ['hollow','solid']){
+  const previous={...blank,...materialModePatch(blank,mode)};
+  assert.equal(previous.lattice,undefined);validateModel(previous);
+  const first={...previous,...materialModePatch(previous,'cellular')};validateModel(first);
+  assert.equal(first.lattice.enabled,true);assert.equal(first.lattice.reveal,.6);
+ }
+ assert.deepEqual(blank,before);
 });
