@@ -3,18 +3,20 @@ import assert from 'node:assert/strict';
 import {PROJECT_TEMPLATES,createProjectTemplate} from '../lib/project-templates.ts';
 import {validateModel,evaluateBase,generateMesh,binarySTL,sectionContours} from '../lib/form-engine.ts';
 import {MAX_SHAPES} from '../lib/shapes.ts';
+import {auditMesh} from '../lib/mesh-audit.ts';
 
-test('eight distinct templates are valid editable documents, not saved user variants',()=>{
- assert.equal(PROJECT_TEMPLATES.length,8);
- assert.equal(new Set(PROJECT_TEMPLATES.map(t=>t.id)).size,8);
- assert.equal(new Set(PROJECT_TEMPLATES.map(t=>JSON.stringify(t.model.shapes))).size,8);
- assert.equal(new Set(PROJECT_TEMPLATES.map(t=>t.model.lattice.kind)).size,4);
+test('distinct cellular and solid templates are valid editable documents, not saved user variants',()=>{
+ assert.equal(PROJECT_TEMPLATES.length,9);
+ assert.equal(new Set(PROJECT_TEMPLATES.map(t=>t.id)).size,9);
+ assert.equal(new Set(PROJECT_TEMPLATES.map(t=>JSON.stringify(t.model.shapes))).size,9);
+ assert.equal(new Set(PROJECT_TEMPLATES.filter(t=>t.model.lattice?.enabled).map(t=>t.model.lattice.kind)).size,4);
  for(const template of PROJECT_TEMPLATES){
   const model=validateModel(createProjectTemplate(template.id));
   assert.ok(model.shapes.length>=4&&model.shapes.length<=MAX_SHAPES);
   assert.ok(model.shapes.some(shape=>shape.operation==='subtract'));
   assert.equal(model.baseEnabled,false);
-  assert.equal(model.lattice.enabled,true);
+  if(template.id!=='camera-pod')assert.equal(model.lattice.enabled,true);
+  else assert.equal(model.lattice?.enabled??false,false);
   assert.deepEqual(model.influences,[]);
  }
 });
@@ -27,6 +29,22 @@ test('loading and editing a template never changes the reusable source document'
  assert.notEqual(first.lattice.region.width,second.lattice.region.width);
  assert.deepEqual(second,createProjectTemplate('counterflow'));
  assert.throws(()=>createProjectTemplate('missing'),/Unknown/);
+});
+
+test('camera reference study is a connected standing form with independently editable valleys',()=>{
+ const model=createProjectTemplate('camera-pod');
+ const valley=model.shapes.find(shape=>shape.id==='colani-upper-valley');
+ assert.equal(valley.kind,'sweep');
+ assert.equal(valley.operation,'subtract');
+ valley.path[1].y+=3;
+ assert.notDeepEqual(valley.path,createProjectTemplate('camera-pod').shapes.find(shape=>shape.id===valley.id).path);
+ const mesh=generateMesh(createProjectTemplate('camera-pod'),90),audit=auditMesh(mesh);
+ assert.equal(audit.components,1);
+ assert.equal(audit.finite,true);
+ for(const key of ['boundaryEdges','nonManifoldEdges','inconsistentWindingEdges','degenerateTriangles','invalidIndices'])assert.equal(audit[key],0,key);
+ const [width,height]=audit.dimensions;
+ assert.ok(height/width>1.3&&height/width<1.8,'upright asymmetric pod proportions');
+ assert.ok(Math.abs(mesh.bounds[1]+62)<.01,'level sole');
 });
 
 test('every template produces finite nonempty geometry and a real STL',()=>{
