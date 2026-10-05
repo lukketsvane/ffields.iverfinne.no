@@ -38,6 +38,18 @@ checks preserve refined STL bytes and verify timer-delivered cancellation.
 Direct checks cover snapshot scaling, protected links, rotation wrapping,
 smooth shared-edge lighting and contact-sequence ownership.
 
+Deployed software-preview UI checks start with a blank construction and insert
+an editable box. A direct scale drag changes width 64 → 89.32 mm and height
+54 → 75.36 mm; one Undo restores 64 × 54 × 48 mm. A rotation drag changes Z
+to −90.80°, and inspecting the same surface keeps Rotate active. One Undo
+restores zero rotation. Inline X rotation accepts 30° and undoes once. A move
+drag changes X to 3.8 mm and undoes to zero. Soften opens its inline controls.
+These are real deployed pointer interactions in the software fallback, not
+physical-phone or GPU measurements.
+
 The available browser still cannot verify real iPhone GPU
 timings or multitouch. The next round should measure these on a physical
-phone, then explore direct curve control points and local material regions.
+phone. Expose export stage progress and its existing cancellation callback in
+the inspector, and investigate budgeted analytic picking while a newer mesh
+is still being refined. Direct curve points and local material regions remain
+the next modelling tools to explore.
