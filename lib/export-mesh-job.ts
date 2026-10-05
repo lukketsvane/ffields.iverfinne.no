@@ -49,7 +49,7 @@ export function runExportMeshJob(model:FormModel,refined:boolean,task:ExportMesh
     let stl:ArrayBuffer|undefined;
     if(task==='stl'){throwIfAborted(controller.signal);progress({stage:'writing'});stl=await binarySTLAsync(mesh,work);}
     throwIfAborted(controller.signal);
-    return {check:{audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started},...(stl?{stl}:{})};
+    return {check:{audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,components:mesh.components,milliseconds:performance.now()-started},...(stl?{stl}:{})};
    })().then(result=>complete(result),error=>complete(undefined,error));
   };
   try{

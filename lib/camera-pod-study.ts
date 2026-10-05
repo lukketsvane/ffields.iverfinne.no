@@ -4,7 +4,7 @@ import {DEFAULT_MODEL,cloneModel,validateModel} from './form-engine.ts';
 import type {FormModel} from './form-engine.ts';
 
 /** Editable photographic form study; nominal scale, no hardware fit claim. */
-export function createCameraPodStudy():FormModel {
+export function createCameraPodStudy(separate=true):FormModel {
 const model=cloneModel(DEFAULT_MODEL);
 Object.assign(model,{name:'Colani upright camera · reference study',baseEnabled:false,width:100,height:120,depth:35,softness:8,asymmetry:0,protect:false,lenses:false,shell:false,usb:false,buttons:false,fingerGrooves:false,influences:[],shapes:[]});
 const shape=(id:string,name:string,kind:ShapeKind,parameters:Partial<FormShape>)=>{const s={...makeShape(kind),id,name,x:0,y:0,z:0,rx:0,ry:0,rz:0,blend:0,...parameters};model.shapes!.push(s);return s};
@@ -37,5 +37,17 @@ shape('colani-lens-inner','Small lens aperture','cylinder',{x:-4,y:-27,z:15.6,wi
 shape('colani-timer-stem','Connected self-timer stem','cylinder',{x:14.5,y:8.5,z:6,width:4,height:12,depth:4,rx:90,blend:.1});
 shape('colani-timer','Self-timer button','sphere',{x:14.5,y:8.5,z:10.8,width:5.8,height:5.8,depth:8,blend:.1});
 shape('colani-pilot','Small front indicator recess','cylinder',{x:-24,y:-2,z:15.5,width:4,height:10,depth:4,rx:90,operation:'subtract',blend:.35});
+if(separate){
+ const plateIds=['colani-lens-plate','colani-lens-seam','colani-lens-recess','colani-lens-inner'];
+ for(const part of model.shapes!)if(plateIds.includes(part.id))part.componentId='colani-lens-plate';
+ shape('colani-plate-seat','Lens plate receiving pocket','cylinder',{x:-4,y:-37.5,z:19.8,width:42.5,height:10,depth:42.5,rx:90,operation:'subtract'});
+}
 return validateModel(model);
+}
+
+/** Upgrade only the untouched shipped reference. Authored documents remain intact. */
+export function upgradeCameraPodStudy(model:FormModel):FormModel{
+ const previous=createCameraPodStudy(false);
+ const equal=(a:unknown,b:unknown):boolean=>{if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;const aa=a as Record<string,unknown>,bb=b as Record<string,unknown>,keys=Object.keys(aa);return keys.length===Object.keys(bb).length&&keys.every(key=>Object.hasOwn(bb,key)&&equal(aa[key],bb[key]));};
+ return equal(model,previous)?createCameraPodStudy():model;
 }

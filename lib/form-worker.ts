@@ -19,7 +19,7 @@ self.onmessage=async(event)=>{
    const mesh=generateExportMesh(model,data.resolution,data.refinement,progress);
    progress({stage:'checking'});
    const {audit,componentFit}=auditExportMesh(model,mesh);
-   const check={audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};
+   const check={audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,components:mesh.components,milliseconds:performance.now()-started};
    if(data.task==='audit'){self.postMessage({id,check});return}
    progress({stage:'writing'});
    const stl=binarySTL(mesh);self.postMessage({id,stl,check},{transfer:[stl]});return;

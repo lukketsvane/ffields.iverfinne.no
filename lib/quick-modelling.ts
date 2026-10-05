@@ -37,6 +37,7 @@ export function materialModePatch(model:FormModel,mode:'solid'|'hollow'|'cellula
 export function quickShape(model:FormModel,kind:ShapeKind,operation:ShapeOperation,selected:string):FormShape {
  const result=makeShape(kind),anchor=model.shapes?.find(shape=>shape.id===selected),component=model.assets?.find(asset=>asset.id===selected),hasSolid=model.baseEnabled!==false||model.shapes?.some(shape=>shape.enabled&&shape.operation==='union');
  const envelope=component?.envelope?.map(dimension=>dimension*component.scale),width=anchor?.width??envelope?.[0]??model.width,height=anchor?.height??envelope?.[1]??model.height,depth=anchor?.depth??envelope?.[2]??model.depth;
+ if(anchor?.componentId)result.componentId=anchor.componentId;
  result.operation=operation;result.blend=operation==='union'?result.blend:0;
  result.x=anchor?.x??component?.x??0;result.y=anchor?.y??component?.y??0;result.z=anchor?.z??component?.z??0;
  if(operation==='subtract'){

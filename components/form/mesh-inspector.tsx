@@ -1,4 +1,5 @@
 "use client";
+import type {MeshData} from '@/lib/form-engine';
 import type {MeshAudit} from '@/lib/mesh-audit';
 import type {MeshRefinementStats} from '@/lib/mesh-refinement';
 import type {MeshSamplingStats} from '@/lib/mesh-sampling';
@@ -7,7 +8,7 @@ import {exportMeshStageLabel} from '@/lib/export-progress';
 import type {ExportMeshProgress} from '@/lib/export-progress';
 import styles from './mesh-inspector.module.css';
 
-export type MeshCheckResult={audit:MeshAudit;refinement?:MeshRefinementStats;sampling?:MeshSamplingStats;componentFit?:ComponentFitAudit;milliseconds:number};
+export type MeshCheckResult={audit:MeshAudit;components?:MeshData['components'];refinement?:MeshRefinementStats;sampling?:MeshSamplingStats;componentFit?:ComponentFitAudit;milliseconds:number};
 type Props={fileURL?:string;refine:boolean;onRefine:(value:boolean)=>void;result:MeshCheckResult|null;busy:boolean;exporting:boolean;progress?:ExportMeshProgress|null;onCheck:()=>void;onCancel:()=>void;onCancelExport?:()=>void;onExport:()=>void;error:string;onInspectComponent?:(id:string)=>void};
 export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,progress,onCheck,onCancel,onCancelExport,onExport,error,onInspectComponent}:Props){
  const audit=result?.audit,stats=result?.refinement,sampling=result?.sampling,componentFit=result?.componentFit;
@@ -31,7 +32,7 @@ export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,pro
    {hasComponentChecks&&<ComponentFitReport audit={componentFit!} onInspectComponent={onInspectComponent}/>}
    {hasComponentChecks&&<div className={styles.measurementsHeading}>Mesh measurements</div>}
    <dl>
-    <dt>Dimensions</dt><dd>{audit.dimensions.map(value=>value.toFixed(1)).join(' × ')} mm</dd>
+    {result?.components&&<><dt>Solid components</dt><dd>{result.components.length} · {result.components.map(part=>part.name).join(', ')}</dd></>}<dt>Dimensions</dt><dd>{audit.dimensions.map(value=>value.toFixed(1)).join(' × ')} mm</dd>
     {sampling&&<><dt>Largest grid step</dt><dd>{Math.max(...sampling.maxSpacing).toFixed(3)} mm</dd><dt>Aligned face planes</dt><dd>{sampling.addedPlanes.reduce((sum,n)=>sum+n,0)}{sampling.budgetLimited?' · budget reached':''}</dd></>}
     <dt>Triangles</dt><dd>{audit.triangles.toLocaleString('en-US')}</dd>
     <dt>Connected pieces</dt><dd>{audit.components}</dd>
@@ -44,6 +45,7 @@ export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,pro
     <dt>Generation time</dt><dd>{(result!.milliseconds/1000).toFixed(1)} s</dd>
    </dl>
    {sampling?.quantizationLimited&&<p className={styles.help}>{sampling.featureAligned?'Sampling adjusted to avoid collapsed tiny faces; flat interface alignment retained.':'Sampling adjusted to avoid collapsed tiny faces. Ordinary sampling used; inspect small openings.'}</p>}
+   {result?.components?.map(part=>part.refinement?<p className={styles.help} key={part.id}>{part.name}: {part.refinement.outputTriangles.toLocaleString('en-US')} triangles{part.refinement.qualityLimited?' · finer sampling needed':''}{part.refinement.budgetLimited?' · detail budget reached':''}.</p>:null)}
    {stats&&<p className={styles.help}>{stats.passes} refinement {stats.passes===1?'pass':'passes'} · {stats.inputTriangles.toLocaleString('en-US')} → {stats.outputTriangles.toLocaleString('en-US')} triangles{stats.budgetLimited?' · detail budget reached':''}{stats.qualityLimited?' · sharper corners need finer sampling':''}.</p>}
    {sampling&&<p className={styles.help}>Grid spacing describes sampling, not fit tolerance. Thin walls and small openings need geometry checks.</p>}
    <p className={styles.help}>{hasComponentChecks?'Triangle connections and component interference are checked separately. Surface self-intersections and material strength need further checks.':'Measurements describe the captured export frame. Checks triangle connections; intersections and material strength need separate checks.'}</p>
