@@ -28,6 +28,8 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 - [Construction round journal](docs/construction-rounds.md).
 - One stereo camera frame, built from blank public construction commands, with editable camera envelopes, centre spacing, clearances and wall scale. Open **Stereo camera frame** from File or Construct, then select Stereo frame for explicit regeneration; all individual curves and cuts remain editable. [Camera design findings](docs/stereo-camera-round.md).
 - Component fit controls turn a measured envelope into a linked, real clearance cut and an optional insertion corridor. Translation, rotation and scale update the cut; direct geometric editing releases its link. Hidden reference components retain their cuts.
+- Closed sweeps use cyclic controls and a continuous transported section frame. The docked Open/Closed tools keep one editable seam point; closing removes endpoint links, while Undo restores the original construction.
+- Export checks test every component envelope and authored straight insertion corridor against the captured triangles, including fully enclosed components and hidden references. Seat and insertion results are separate from mesh connectivity, with Inspect actions back to the component dock. [Closed-loop and fit-check findings](docs/stereo-loops-fit-round.md).
 - Mesh exports align a bounded sampling grid to eligible sharp box faces and report actual grid spacing. This improves detected seats and rims without claiming fit tolerance.
 - An entropy generator creates a seeded composition of blended masses and deformation fields; its result remains editable and undoable.
 - Eight editable engineering studies: Counterflow, Vortex, Halo, Strut, Confluence, Oculus, Cellular panel and Spiral. Each opens as primitive operations and analytic lattice settings, with its actual geometry shown in the project picker.
@@ -52,8 +54,10 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 | `lib/truss-study.ts` | One reproducible worked construction using those commands |
 | `lib/stereo-camera-study.ts` | The single parametric stereo frame and its construction recipe |
 | `lib/component-clearance.ts` | Measured component envelopes and linked cavity/insertion geometry |
+| `lib/component-fit.ts` | Actual exported-mesh interference and containment checks for component envelopes and straight insertion corridors |
 | `lib/mesh-sampling.ts` | Bounded face-aligned grid and sampling statistics |
 | `components/form/sweep-editor.tsx` | Docked planar curve sketch and precise control-point editing |
+| `components/form/sweep-path-edit.ts` | Data-preserving Open/Closed edits and wrapped control insertion |
 | `lib/lattice.ts` | Constant-size periodic lattice fields, material regions, skin and cutaways |
 | `lib/project-templates.ts` | Editable engineering study construction recipes |
 | `lib/workspace-camera.ts` | Projection changes that preserve the camera pose |

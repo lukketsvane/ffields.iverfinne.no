@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {applyConstructionCommand,blankConstruction} from '../lib/construction.ts';
 import {createStereoCameraStudy,stereoCameraStudyCommands,inferStereoCameraStudyParameters,DEFAULT_STEREO_CAMERA_PARAMETERS as defaults} from '../lib/stereo-camera-study.ts';
 import {evaluateBase,generateMesh,validateModel} from '../lib/form-engine.ts';
-import {auditMesh} from '../lib/mesh-audit.ts';
 import {stereoEnvelopeCollisions} from './stereo-geometry-check.mjs';
+import {evaluateShape,sweepSamples} from '../lib/shapes.ts';
+import {auditExportMesh} from '../lib/component-fit.ts';
 
 test('the independent export check catches crossing faces and rejects separated corner triangles',()=>{
  const triangle=(positions)=>({positions:new Float32Array(positions),indices:new Uint32Array([0,1,2])});
@@ -27,6 +28,32 @@ test('the one stereo frame is reproducible from public construction actions',()=
  assert.equal(model.componentClearances.length,2);
  assert.equal(model.attachments.length,4);
  assert.deepEqual(inferStereoCameraStudyParameters(model),defaults);
+});
+
+test('the four camera collars close cyclically without duplicated editable endpoints',()=>{
+ const model=createStereoCameraStudy(),ids=['stereo-shoulder-left','stereo-rear-shoulder-left','stereo-shoulder-right','stereo-rear-shoulder-right'];
+ assert.equal(model.shapes.filter(shape=>shape.closed===true).length,4);
+ for(const id of ids){
+  const collar=model.shapes.find(shape=>shape.id===id),samples=sweepSamples(collar);
+  assert.equal(collar.closed,true);assert.equal(collar.path.length,9);
+  assert.notDeepEqual(collar.path.at(-1),collar.path[0],'the seam is generated, not a repeated editable control');
+  assert.deepEqual(samples.at(-1),samples[0],'the generated loop meets at its first point and section');
+  const path=collar.path.map(point=>({...point}));path[0].x+=3;path[0].y-=1;
+  const edited=applyConstructionCommand(model,{action:'update',id,patch:{path}}).shapes.find(shape=>shape.id===id),editedSamples=sweepSamples(edited);
+  assert.deepEqual(editedSamples.at(-1),editedSamples[0],'editing the seam moves both sides of the same loop');
+  assert.equal(edited.path.length,9);assert.equal(edited.path[0].radius,defaults.wall*1.1);
+ }
+});
+
+test('explicitly closing the collars preserves the authored reference interfaces',()=>{
+ const model=createStereoCameraStudy();
+ for(const collar of model.shapes.filter(shape=>shape.closed===true)){
+  const legacy={...collar,closed:false,path:[...collar.path.map(point=>({...point})),{...collar.path[0]}]};
+  for(const x of [-3,0,3])for(const y of [-3,0,3])for(const z of [-2,0,2]){
+   const first=collar.path[0],point=[collar.x+first.x+x,collar.y+first.y+y,collar.z+first.z+z];
+   assert.ok(Math.abs(evaluateShape(collar,...point)-evaluateShape(legacy,...point))<1e-8,'closure preserves the intentional lower seam profile');
+  }
+ }
 });
 
 test('the curved mounting bridges keep their authored shoulder connections',()=>{
@@ -84,11 +111,16 @@ test('the parameter editor does not misrepresent mismatched or independently mov
 });
 
 test('actual stereo frame mesh is one closed connected body',()=>{
- const model=createStereoCameraStudy(),mesh=generateMesh(model,96),audit=auditMesh(mesh);
+ const model=createStereoCameraStudy(),mesh=generateMesh(model,96),{audit,componentFit:fitted}=auditExportMesh(model,mesh);
  assert.equal(audit.components,1);assert.equal(audit.boundaryEdges,0);assert.equal(audit.nonManifoldEdges,0);
  assert.equal(audit.inconsistentWindingEdges,0);assert.equal(audit.degenerateTriangles,0);assert.equal(audit.invalidIndices,0);assert.equal(audit.finite,true);
  assert.ok(audit.volume>1000);assert.ok(audit.dimensions[0]>143&&audit.dimensions[0]<154);
  const seatCheck=stereoEnvelopeCollisions(mesh);
  assert.equal(seatCheck.triangleHardwareCollisions,0,'mesh preserves at least .45 mm per-side reference clearance');
  assert.equal(seatCheck.requiredPerSideClearance,.45);
+ assert.equal(fitted.meshVerified,true);assert.equal(fitted.components.length,2);
+ for(const component of fitted.components){
+  assert.equal(component.status,'clear');assert.equal(component.seat.status,'clear');assert.equal(component.seat.surfaceTriangleCount,0);
+  assert.equal(component.insertion?.status,'clear');assert.equal(component.insertion.surfaceTriangleCount,0);
+ }
 });

@@ -29,6 +29,7 @@ const capitalize=(value:string)=>value.charAt(0).toUpperCase()+value.slice(1);
 /** Endpoint relationships stay in the docked inspector; target selection does not move the path. */
 export function SweepAttachmentEditor(props:SweepAttachmentEditorProps){
  if(props.shape.kind!=='sweep')return null;
+ if(props.shape.closed)return <section className="sweep-attachments" aria-label="Sweep endpoint attachments"><p className="attachment-help">Closed curves have no endpoint attachments. Open the curve to attach its ends.</p></section>;
  return <AttachmentEditorContent key={props.shape.id} {...props}/>;
 }
 

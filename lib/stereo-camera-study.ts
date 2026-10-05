@@ -39,11 +39,11 @@ export function stereoCameraStudyCommands(input:Partial<StereoCameraStudyParamet
   for(const [face,z] of [['front',frontZ],['rear',-frontZ]] as const){
    const collar=sweep(face==='front'?'stereo-shoulder-'+side:'stereo-rear-shoulder-'+side,(side==='left'?'Left':'Right')+' '+face+' tapered camera collar',[
     [0,-b,z,wall*1.1],[-a*.85,-b,z,wall*1.1],[-a,-b*.75,z,wall*1.2],[-a,b*.75,z,wall*.9],[-a*.85,b,z,wall*.8],
-    [a*.85,b,z,wall*.8],[a,b*.75,z,wall*.9],[a,-b*.75,z,wall*1.2],[a*.85,-b,z,wall*1.1],[0,-b,z,wall*1.1],
+    [a*.85,b,z,wall*.8],[a,b*.75,z,wall*.9],[a,-b*.75,z,wall*1.2],[a*.85,-b,z,wall*1.1],
    ],wall*.35,.72);
    // Sweep coordinates are local to each camera, keeping a collar editable as
    // one object while its front and rear boundaries share the same envelope.
-   if(collar.action==='add')collar.shape.x=sign*half;
+   if(collar.action==='add'){collar.shape.x=sign*half;collar.shape.closed=true;}
    commands.push(collar);
   }
   for(const [railSign,edge] of [[-1,'left'],[1,'right']] as const){

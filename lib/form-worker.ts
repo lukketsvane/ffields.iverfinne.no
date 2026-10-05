@@ -1,12 +1,13 @@
 import {generateMesh,binarySTL,validateModel} from './form-engine';
-import {auditMesh} from './mesh-audit';
+import {auditExportMesh} from './component-fit';
 
 self.onmessage=(event)=>{
  try{
   const started=performance.now();
-  const mesh=generateMesh(validateModel(event.data.model),event.data.resolution,event.data.refinement);
+  const model=validateModel(event.data.model),mesh=generateMesh(model,event.data.resolution,event.data.refinement);
   if(event.data.task==='stl'||event.data.task==='audit'){
-   const check={audit:auditMesh(mesh),refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};
+   const {audit,componentFit}=auditExportMesh(model,mesh);
+   const check={audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};
    if(event.data.task==='audit'){self.postMessage({id:event.data.id,check});return}
    const stl=binarySTL(mesh);self.postMessage({id:event.data.id,stl,check},{transfer:[stl]});return;
   }

@@ -32,7 +32,7 @@ export function blankConstruction(name='Untitled construction'):FormModel {
  return {...cloneModel(DEFAULT_MODEL),name,baseEnabled:false,asymmetry:0,influences:[],shapes:[]};
 }
 
-const fields=new Set(['id','name','kind','enabled','operation','blend','x','y','z','rx','ry','rz','width','height','depth','roundness','path','depthRatio','sectionMode','sectionRoll']);
+const fields=new Set(['id','name','kind','enabled','operation','blend','x','y','z','rx','ry','rz','width','height','depth','roundness','path','depthRatio','sectionMode','sectionRoll','closed']);
 function record(input:unknown,label:string):Record<string,unknown>{
  if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Expected '+label+'.');
  return input as Record<string,unknown>;
@@ -78,7 +78,7 @@ export function applyConstructionCommand(model:FormModel,input:unknown):FormMode
   next.attachments=[...(next.attachments??[]).filter(existing=>existing.sweepId!==link.sweepId||existing.endpoint!==link.endpoint),link];
  }else if(c.action==='detach'){
   keys(c,['action','sweepId','endpoint']);
-  if(typeof c.sweepId!=='string'||!['start','end'].includes(c.endpoint as string)||!shapes.some(shape=>shape.id===c.sweepId&&shape.kind==='sweep'))throw Error('Choose an existing sweep endpoint.');
+  if(typeof c.sweepId!=='string'||!['start','end'].includes(c.endpoint as string)||!shapes.some(shape=>shape.id===c.sweepId&&shape.kind==='sweep'&&!shape.closed))throw Error('Choose an existing open sweep endpoint.');
   next.attachments=(next.attachments??[]).filter(link=>link.sweepId!==c.sweepId||link.endpoint!==c.endpoint);
  }else if(c.action==='transform'){
   keys(c,['action','ids','translation','rotation','pivot']);

@@ -28,7 +28,7 @@ export function projectSweepSection(point:SweepPoint,plane:SketchPlane,depthRati
 export function fitSweepProjection(sections:readonly SectionProjection[]):SketchBounds{
  const minX=Math.min(...sections.map(section=>section.x-section.extentX)),maxX=Math.max(...sections.map(section=>section.x+section.extentX));
  const minY=Math.min(...sections.map(section=>section.y-section.extentY)),maxY=Math.max(...sections.map(section=>section.y+section.extentY));
- const size=Math.max(200,(maxX-minX)*1.24,(maxY-minY)*1.24);
+ const size=Math.max(32,(maxX-minX)*1.24,(maxY-minY)*1.24);
  return {x:(minX+maxX-size)/2,y:(minY+maxY-size)/2,size};
 }
 
