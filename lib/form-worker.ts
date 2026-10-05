@@ -1,16 +1,30 @@
-import {generateMesh,binarySTL,validateModel} from './form-engine';
+import {generateMesh,generateMeshAsync,binarySTL,validateModel} from './form-engine';
 import {auditExportMesh} from './component-fit';
+import {previewAmbientOcclusion} from './preview-shading';
 
-self.onmessage=(event)=>{
+const previews=new Map<number,AbortController>();
+self.onmessage=async(event)=>{
+ const data=event.data;
+ // Preview work actually yields so newer messages can stop both evaluation
+ // and display shading. Authoritative export/audit is its separate path.
+ if(typeof data.cancel==='number'){previews.get(data.cancel)?.abort();return}
+ const id=data.id,started=performance.now();let controller:AbortController|undefined;
  try{
-  const started=performance.now();
-  const model=validateModel(event.data.model),mesh=generateMesh(model,event.data.resolution,event.data.refinement);
-  if(event.data.task==='stl'||event.data.task==='audit'){
-   const {audit,componentFit}=auditExportMesh(model,mesh);
+  const model=validateModel(data.model);
+  if(data.task==='stl'||data.task==='audit'){
+   const mesh=generateMesh(model,data.resolution,data.refinement),{audit,componentFit}=auditExportMesh(model,mesh);
    const check={audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};
-   if(event.data.task==='audit'){self.postMessage({id:event.data.id,check});return}
-   const stl=binarySTL(mesh);self.postMessage({id:event.data.id,stl,check},{transfer:[stl]});return;
+   if(data.task==='audit'){self.postMessage({id,check});return}
+   const stl=binarySTL(mesh);self.postMessage({id,stl,check},{transfer:[stl]});return;
   }
-  self.postMessage({id:event.data.id,mesh},{transfer:[mesh.positions.buffer,mesh.normals.buffer,mesh.indices.buffer]});
- }catch(error){self.postMessage({id:event.data.id,error:String(error)})}
+  controller=new AbortController();previews.get(id)?.abort();previews.set(id,controller);
+  const options={signal:controller.signal,budgetMs:8,draft:data.draft===true};
+  const mesh=await generateMeshAsync(model,data.resolution,undefined,undefined,options);
+  const ao=data.shading&&!data.draft?await previewAmbientOcclusion(model,mesh,options):undefined;
+  if(controller.signal.aborted){self.postMessage({id,aborted:true});return}
+  self.postMessage({id,mesh,...(ao?{ao}:{}),milliseconds:performance.now()-started},{transfer:[mesh.positions.buffer,mesh.normals.buffer,mesh.indices.buffer,...(ao?[ao.buffer]:[])]});
+ }catch(error){
+  if(controller?.signal.aborted||(error instanceof DOMException&&error.name==='AbortError'))self.postMessage({id,aborted:true});
+  else self.postMessage({id,error:String(error)});
+ }finally{if(controller&&previews.get(id)===controller)previews.delete(id);}
 };
