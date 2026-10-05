@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {createTrussStudy,TRUSS_STUDY_COMMANDS} from '../lib/truss-study.ts';
 import {createStereoCameraStudy,stereoCameraStudyCommands} from '../lib/stereo-camera-study.ts';
 import {auditMesh} from '../lib/mesh-audit.ts';
+import {auditExportMesh} from '../lib/component-fit.ts';
 import {stereoEnvelopeCollisions} from './stereo-geometry-check.mjs';
 import {generateMesh,binarySTL} from '../lib/form-engine.ts';
 
@@ -27,11 +28,16 @@ const cameras={front:'-.55,.30,1',rear:'.50,.20,-1',orthographic:'0,0,1',side:'1
 for(const view of views)if(!cameras[view])throw Error('Unknown view '+view);
 await mkdir(output,{recursive:true});
 const refinement=process.argv.includes('--refine')||process.argv.includes('--refined')?{tolerance:.12,maxPasses:2,maxTriangles:900000}:undefined;
-const started=performance.now(),model=study==='stereo'?createStereoCameraStudy():createTrussStudy(),mesh=generateMesh(model,resolution,refinement);
-console.log(name+': '+Math.round(performance.now()-started)+' ms, '+mesh.indices.length/3+' triangles at '+resolution+'.');
+const started=performance.now(),model=study==='stereo'?createStereoCameraStudy():createTrussStudy(),mesh=generateMesh(model,resolution,refinement),generationMs=performance.now()-started;
+console.log(name+': '+Math.round(generationMs)+' ms, '+mesh.indices.length/3+' triangles at '+resolution+'.');
 if(mesh.refinement)console.log(JSON.stringify(mesh.refinement));
-const report={audit:auditMesh(mesh),sampling:mesh.sampling,refinement:mesh.refinement,...(study==='stereo'?{componentClearance:stereoEnvelopeCollisions(mesh)}:{})};
-if(process.argv.includes('--verify')&&(!report.audit.finite||!report.audit.triangles||report.audit.components!==1||report.audit.invalidIndices||report.audit.degenerateTriangles||report.audit.boundaryEdges||report.audit.nonManifoldEdges||report.audit.inconsistentWindingEdges||report.componentClearance?.triangleHardwareCollisions))throw Error('Construction export verification failed: '+JSON.stringify(report));
+const verificationStarted=performance.now(),checked=study==='stereo'?auditExportMesh(model,mesh):{audit:auditMesh(mesh)},audit=checked.audit,componentFit=checked.componentFit,componentClearance=study==='stereo'?stereoEnvelopeCollisions(mesh):undefined,verificationMs=performance.now()-verificationStarted;
+const report={audit,sampling:mesh.sampling,refinement:mesh.refinement,timings:{generationMs,verificationMs},...(study==='stereo'?{componentClearance,componentFit}:{})};
+const stereoFitVerified=study!=='stereo'||(componentFit?.meshVerified===true&&componentFit.components.length===2&&['stereo-camera-left','stereo-camera-right'].every(id=>{
+ const result=componentFit.components.find(component=>component.assetId===id);
+ return result?.status==='clear'&&result.seat.status==='clear'&&result.insertion?.status==='clear';
+}));
+if(process.argv.includes('--verify')&&(!report.audit.finite||!report.audit.triangles||report.audit.components!==1||report.audit.invalidIndices||report.audit.degenerateTriangles||report.audit.boundaryEdges||report.audit.nonManifoldEdges||report.audit.inconsistentWindingEdges||report.componentClearance?.triangleHardwareCollisions||!stereoFitVerified))throw Error('Construction export verification failed: '+JSON.stringify(report));
 console.log(JSON.stringify(report));
 const temporary=await mkdtemp(join(tmpdir(),'ffields-study-'));
 const source=join(temporary,name+'.mesh.json');
@@ -42,7 +48,7 @@ try{
  if(artifacts){
   const directory=resolve(artifacts);
   await mkdir(directory,{recursive:true});
-  await writeFile(join(directory,name+'.form.json'),JSON.stringify(model,null,2));
+  await writeFile(join(directory,name+'.form.json'),JSON.stringify({format:'FORM',version:1,model},null,2));
   await writeFile(join(directory,name+'.commands.json'),JSON.stringify(study==='stereo'?stereoCameraStudyCommands():TRUSS_STUDY_COMMANDS,null,2));
   await writeFile(join(directory,name+'.stl'),new Uint8Array(binarySTL(mesh)));
   await writeFile(join(directory,name+'.mesh.json'),meshSource);

@@ -135,6 +135,12 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
 .sweep-editor{min-width:0}
 .sweep-editor-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 6px;font-size:12px;color:var(--label)}
 .sweep-editor-heading>small{font-size:10px;color:var(--muted-foreground)}
+.sweep-topology-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.sweep-topology-controls>button{min-height:32px;border:1px solid var(--line);border-radius:4px;background:var(--control);color:var(--label);font-size:12px;touch-action:manipulation}
+.sweep-topology-controls>button[aria-pressed=true]{background:var(--selected);border-color:var(--handle);color:var(--foreground)}
+.sweep-topology-controls>button:focus-visible{outline:2px solid var(--handle);outline-offset:2px}
+.sweep-topology-help,.sweep-path-error{margin:6px 0 8px;font-size:10px;line-height:1.5;color:var(--muted-foreground)}
+.sweep-path-error{color:var(--destructive)}
 .sweep-plane-controls{display:flex;align-items:center;gap:4px;min-height:37px;margin-bottom:6px}
 .sweep-plane-tabs{display:flex;gap:4px}
 .sweep-plane-tabs>button,.sweep-plane-controls>button,.sweep-actions>button,.sweep-point-list>button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:0 9px;border:1px solid var(--line);border-radius:4px;background:var(--control);color:var(--label);font-size:12px}
@@ -181,6 +187,8 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
  .worked-study small{font-size:11px}
  .worked-study-preview{flex-basis:72px;height:68px}
  .sweep-plane-tabs>button,.sweep-plane-controls>button,.sweep-actions>button,.sweep-point-list>button{min-height:40px;font-size:13px}
+ .sweep-topology-controls>button{min-height:40px;font-size:13px}
+ .sweep-topology-help,.sweep-path-error{font-size:11px}
  .sweep-point-fields input{height:38px;font-size:16px}
  .sweep-help{font-size:11px}
 }

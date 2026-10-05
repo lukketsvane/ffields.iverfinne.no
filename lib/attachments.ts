@@ -44,6 +44,7 @@ export function validateAttachments(model:FormModel):void {
   if(!link||typeof link!=='object'||Array.isArray(link)||typeof link.sweepId!=='string'||!link.sweepId.length||typeof link.targetShapeId!=='string'||!link.targetShapeId.length||!['start','end'].includes(link.endpoint)||!ATTACHMENT_ANCHORS.includes(link.anchor)||!link.offset||typeof link.offset!=='object'||Array.isArray(link.offset))throw Error('Invalid sweep attachment.');
   const sweep=shapes.get(link.sweepId),target=shapes.get(link.targetShapeId);
   if(!sweep||!isSweepShape(sweep)||!target)throw Error('Attachment references a missing sweep or target.');
+  if(sweep.closed)throw Error('Closed sweeps have no endpoints to attach.');
   if(link.sweepId===link.targetShapeId)throw Error('A sweep cannot attach to itself.');
   if(occupied.has(key(link)))throw Error('A sweep endpoint can have only one attachment.');occupied.add(key(link));
   for(const axis of ['x','y','z'] as const){const value=link.offset[axis];if(typeof value!=='number'||!Number.isFinite(value)||value<ATTACHMENT_LIMITS.offset[0]||value>ATTACHMENT_LIMITS.offset[1])throw Error('Invalid attachment offset.');}
@@ -58,7 +59,7 @@ export function validateAttachments(model:FormModel):void {
  * are supported as long as their design-intent graph remains acyclic. */
 export function canAttachTo(model:FormModel,sweepId:string,targetShapeId:string){
  const shapes=model.shapes??[],source=shapes.find(shape=>shape.id===sweepId);
- if(!source||!isSweepShape(source)||sweepId===targetShapeId||!shapes.some(shape=>shape.id===targetShapeId))return false;
+ if(!source||!isSweepShape(source)||source.closed||sweepId===targetShapeId||!shapes.some(shape=>shape.id===targetShapeId))return false;
  const seen=new Set<string>();function reaches(id:string):boolean{if(id===sweepId)return true;if(seen.has(id))return false;seen.add(id);return (model.attachments??[]).filter(link=>link.sweepId===id).some(link=>reaches(link.targetShapeId));}
  return !reaches(targetShapeId);
 }
@@ -87,6 +88,7 @@ export function resolveAttachments(model:FormModel):FormModel {
 /** Capture a target-local offset without moving the current endpoint. */
 export function attachmentForEndpoint(model:FormModel,selection:AttachmentSelection):SweepAttachment {
  const resolved=resolveAttachments(model),sweep=resolved.shapes?.find(shape=>shape.id===selection.sweepId),target=resolved.shapes?.find(shape=>shape.id===selection.targetShapeId);
+ if(sweep?.closed)throw Error('Closed sweeps have no endpoints to attach.');
  if(!sweep||!isSweepShape(sweep)||!target||!canAttachTo(resolved,selection.sweepId,selection.targetShapeId))throw Error('Choose an acyclic sweep attachment target.');
  if(!['start','end'].includes(selection.endpoint))throw Error('Invalid sweep endpoint.');
  const endpoint=sweep.path[endpointIndex(sweep,selection.endpoint)],world=attachmentLocalToWorld(sweep,endpoint),local=attachmentWorldToLocal(target,world),anchor=attachmentAnchor(target,selection.anchor);
@@ -98,7 +100,9 @@ export function attachmentForEndpoint(model:FormModel,selection:AttachmentSelect
  * radius/interior/section edits retain its link. Removing a target freezes the
  * previously resolved endpoint before dropping its link. Mirrored copies have
  * no copied links, so they freeze their reflected construction unless explicitly
- * reattached. Already-resolved command output should use resolveAttachments. */
+ * reattached. Closing a sweep removes its existing endpoint links and retains
+ * the resolved controls. New links to a closed source remain invalid.
+ * Already-resolved command output should use resolveAttachments. */
 export function reconcileAttachments(previous:FormModel,next:FormModel):FormModel {
  const before=resolveAttachments(previous),beforeShapes=new Map((before.shapes??[]).map(shape=>[shape.id,shape])),nextShapes=new Map((next.shapes??[]).map(shape=>[shape.id,shape])),beforeLinks=new Map((before.attachments??[]).map(link=>[key(link),link]));
  if(next.attachments===undefined)return next;
@@ -109,6 +113,14 @@ export function reconcileAttachments(previous:FormModel,next:FormModel):FormMode
   if(!sweep){changed=true;continue;}
   if(!isSweepShape(sweep))throw Error('Only curved sweep endpoints can be attached.');
   const index=endpointIndex(sweep,link.endpoint),point=sweep.path[index],oldPoint=oldSweep&&isSweepShape(oldSweep)?oldSweep.path[endpointIndex(oldSweep,link.endpoint)]:undefined;
+  if(sweep.closed){
+   if(!oldSweep||oldSweep.closed||!oldLink||!sameLink(oldLink,link))throw Error('Closed sweeps have no endpoints to attach.');
+   const authored=previous.shapes?.find(shape=>shape.id===sweep.id),oldAuthored=authored&&isSweepShape(authored)?authored.path[endpointIndex(authored,link.endpoint)]:undefined;
+   // Raw documents may carry stale attached coordinates. Preserve the last
+   // resolved local control unless the edit explicitly changed that control.
+   if(oldPoint&&oldAuthored&&xyz(point,oldAuthored)&&!xyz(point,oldPoint)){const path=[...sweep.path];path[index]={...point,x:oldPoint.x,y:oldPoint.y,z:oldPoint.z};nextShapes.set(sweep.id,{...sweep,path});}
+   changed=true;continue;
+  }
   if(!nextShapes.has(link.targetShapeId)){
    if(!oldLink||!oldPoint)throw Error('Attachment references a missing target.');
    const frozen=attachmentWorldToLocal(sweep,attachmentLocalToWorld(oldSweep!,oldPoint));
