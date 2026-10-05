@@ -19,18 +19,12 @@ export function softwareInteractionShouldCancel(interaction:{id:string;started:b
  return (interaction.started&&!state.editing)||!state.handles||state.selected!==interaction.id||state.mode!==interaction.mode||(interaction.mode==='rotate'&&state.axis!==interaction.axis);
 }
 
-/** Idle surface detail is independent from interaction drafts. A measured
- * expensive preview bounds later idle effort without changing export quality. */
+/** Do not let a slow interaction draft permanently lower settled detail.
+ * Worker cancellation/yielding bounds responsiveness, not idle geometry. */
 export function softwarePreviewResolution(model:FormModel,quality:{mobile:boolean;editing:boolean;previous?:{resolution:number;milliseconds:number}}):number{
  const requested=previewResolution(model,quality);
  if(quality.editing)return Math.min(40,requested);
- const previous=quality.previous;
- let resolution=Math.min(96,requested);
- if(previous&&Number.isFinite(previous.resolution)&&previous.resolution>0&&Number.isFinite(previous.milliseconds)&&previous.milliseconds>0){
-  const target=quality.mobile?1400:1800;
-  resolution=Math.min(resolution,previous.resolution*Math.cbrt(target/previous.milliseconds));
- }
- return Math.max(64,Math.min(96,Math.round(resolution/4)*4));
+ return requested;
 }
 
 export function softwareBasis(camera:SoftwareCamera){

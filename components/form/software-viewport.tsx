@@ -2,7 +2,7 @@
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {clamp,cloneModel,generateMeshAsync,modelBounds,sectionContoursAsync,withoutRipples} from '@/lib/form-engine';
 import type {FormModel,MeshData,SectionContours} from '@/lib/form-engine';
-import {LatestPreviewScheduler} from '@/lib/preview-scheduler';
+import {LatestPreviewScheduler,previewRefinement} from '@/lib/preview-scheduler';
 import {selectedHandle,projectedHandleHit,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '@/lib/direct-manipulation';
 import {pickCurrentSurface} from '@/lib/implicit-picking';
 import type {DirectHandle,DirectTransformMode,DirectTransformPatch} from '@/lib/direct-manipulation';
@@ -43,6 +43,9 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   const gripMode=(handle:DirectHandle):DirectTransformMode|undefined=>{const p=latest.current,mode=handle.kind==='influence'||!p.onTransform?'move':p.transformMode??'move';return mode==='move'||directTransformPatch(p.model,handle.id,mode,mode==='size'?1:0,p.transformAxis??'z')?mode:undefined};
   const gripPoint=(handle:DirectHandle,mode:DirectTransformMode)=>{const anchor=projectSoftwarePoint(handle,activeCamera(),size),offset=directGripOffset(mode);return {anchor,at:{x:anchor.x+offset.x,y:anchor.y+offset.y}}};
   const invalidate=()=>{if(disposed||document.hidden)return;if(continuation){needsDraw=true;refreshOverlay();return}revision++;if(!frameId)frameId=requestAnimationFrame(draw)};
+  // New geometry or a camera preset must discard an obsolete partial frame.
+  // Selection-only changes can still refresh the existing complete overlay.
+  const preemptSurface=()=>{if(continuation){cancelAnimationFrame(continuation);continuation=0}needsDraw=false;revision++;invalidate()};
   const preemptDetail=()=>{if(continuation&&!paintingDraft){cancelAnimationFrame(continuation);continuation=0;needsDraw=false;revision++}invalidate()};
   const drawGrip=()=>{
    const p=latest.current;if(!p.handles||p.view==='silhouette')return;
@@ -94,12 +97,12 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    };
    paint(0);
   }
-  const fit=(view?:'front'|'top'|'perspective')=>{if(view)camera=softwareView(camera,view);camera=fitSoftwareCamera(camera,data?.indices.length?data.bounds:modelBounds(latest.current.model,false),size);fitted=true;invalidate()};
+  const fit=(view?:'front'|'top'|'perspective')=>{if(view)camera=softwareView(camera,view);camera=fitSoftwareCamera(camera,data?.indices.length?data.bounds:modelBounds(latest.current.model,false),size);fitted=true;preemptSurface()};
   const resize=()=>{size={width:Math.max(1,el.clientWidth),height:Math.max(1,el.clientHeight)};const ratio=Math.min(window.devicePixelRatio||1,1.5);if(continuation)cancelAnimationFrame(continuation);continuation=0;needsDraw=false;for(const target of [surface,back,front]){target.width=Math.round(size.width*ratio);target.height=Math.round(size.height*ratio)}invalidate()};
   const complete=(job:Job,mesh?:MeshData,message?:string,milliseconds?:number)=>{
    const result=queue.finish(job.id);
    if(result.accept&&!disposed){
-    if(mesh){data=mesh;if(job.draft)draftData=mesh;previous={resolution:job.resolution,milliseconds:milliseconds??0};if(!fitted)fit();latest.current.onMetrics(mesh);setError('');invalidate()}
+    if(mesh){data=mesh;if(job.draft)draftData=mesh;previous={resolution:job.resolution,milliseconds:milliseconds??0};if(!fitted)fit();latest.current.onMetrics(mesh);setError('');preemptSurface()}
     else if(message)setError('The surface could not be evaluated. Try a smaller influence.');
     setBusy(false);
    }
@@ -109,7 +112,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    if(disposed)return;
    if(worker){worker.postMessage(job);return}
    const controller=new AbortController();fallback=controller;const started=performance.now();
-   generateMeshAsync(job.model,job.resolution,undefined,undefined,{signal:controller.signal,budgetMs:6,draft:job.draft}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:String(error))).finally(()=>{if(fallback===controller)fallback=undefined});
+   generateMeshAsync(job.model,job.resolution,previewRefinement(job.draft),undefined,{signal:controller.signal,budgetMs:6,draft:job.draft}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:String(error))).finally(()=>{if(fallback===controller)fallback=undefined});
   };
   const submit=(model:FormModel,draft:boolean)=>{
    const id=draft?++request:request;if(queue.current&&queue.current.id!==id){worker?.postMessage({cancel:queue.current.id});fallback?.abort()}queue.invalidate(id);if(document.hidden)queue.pause();

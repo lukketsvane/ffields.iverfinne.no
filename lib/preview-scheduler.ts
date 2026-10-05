@@ -1,6 +1,14 @@
 import type {FormModel} from './form-engine.ts';
+import type {MeshRefinementOptions} from './mesh-refinement.ts';
 
 export type PreviewQuality={mobile:boolean;editing:boolean;previous?:{resolution:number;milliseconds:number}};
+
+/** Automatically resolve curved display patches after interaction. Drafts
+ * remain cheap; this changes neither the document nor export settings. Shared
+ * worker/fallback policy keeps cancellation and topology guards identical. */
+export function previewRefinement(draft:boolean):MeshRefinementOptions|undefined{
+ return draft?undefined:{tolerance:.04,maxPasses:3,maxTriangles:350000};
+}
 
 /** Bound preview sampling effort by the active evaluator complexity. This is
  * a display policy, not export accuracy, geometry simplification or a promise
@@ -10,7 +18,7 @@ export function previewResolution(model:FormModel,quality:PreviewQuality):number
  for(const shape of model.shapes??[]){if(!shape.enabled)continue;cost+=shape.kind==='sweep'?4+Math.log2(Math.max(2,(shape.path?.length??2)*8)):1;}
  for(const field of model.influences)if(field.enabled&&field.kind!=='wave'&&field.strength!==0)cost+=2;
  if(model.lattice?.enabled)cost+=6;
- const ceiling=quality.editing?(quality.mobile?60:72):(quality.mobile?136:164),floor=quality.editing?(quality.mobile?28:36):(quality.mobile?72:96);
+ const ceiling=quality.editing?(quality.mobile?60:72):(quality.mobile?136:164),floor=quality.editing?(quality.mobile?28:36):(quality.mobile?128:160);
  let resolution=ceiling/Math.cbrt(Math.max(1,cost/(quality.editing?8:12)));
  // A real completed preview may lower later draft effort. Settled previews
  // retain their independent floor; an expensive draft cannot poison export.

@@ -2,6 +2,7 @@ import {generateMeshAsync,binarySTL,validateModel} from './form-engine';
 import {auditExportMesh} from './component-fit';
 import {previewAmbientOcclusion} from './preview-shading';
 import {generateExportMesh} from './export-progress';
+import {previewRefinement} from './preview-scheduler';
 import type {ExportMeshProgress} from './export-progress';
 
 const previews=new Map<number,AbortController>();
@@ -25,7 +26,7 @@ self.onmessage=async(event)=>{
   }
   controller=new AbortController();previews.get(id)?.abort();previews.set(id,controller);
   const options={signal:controller.signal,budgetMs:8,draft:data.draft===true};
-  const mesh=await generateMeshAsync(model,data.resolution,undefined,undefined,options);
+  const mesh=await generateMeshAsync(model,data.resolution,previewRefinement(options.draft),undefined,options);
   const ao=data.shading&&!data.draft?await previewAmbientOcclusion(model,mesh,options):undefined;
   if(controller.signal.aborted){self.postMessage({id,aborted:true});return}
   self.postMessage({id,mesh,...(ao?{ao}:{}),milliseconds:performance.now()-started},{transfer:[mesh.positions.buffer,mesh.normals.buffer,mesh.indices.buffer,...(ao?[ao.buffer]:[])]});

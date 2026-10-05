@@ -5,6 +5,7 @@ import ts from 'typescript';
 import {cloneModel,DEFAULT_MODEL,generateMesh,generatePreviewMesh,evaluateBase,clamp} from '../lib/form-engine.ts';
 import {compileShape,makeShape} from '../lib/shapes.ts';
 import {previewAmbientOcclusion} from '../lib/preview-shading.ts';
+import {previewRefinement} from '../lib/preview-scheduler.ts';
 
 test('worker-side AO preserves the existing field shading and can abort between probes',async()=>{
  const model={...cloneModel(DEFAULT_MODEL),influences:[],asymmetry:0,baseEnabled:false,shapes:[{...makeShape('torus'),x:0,y:0,z:0,blend:0,width:32,height:12,depth:32,roundness:.4}]},mesh=generateMesh(model,32),before=JSON.stringify(model),shapes=model.shapes.map(compileShape),expected=new Float32Array(mesh.positions.length/3);
@@ -32,7 +33,7 @@ test('real worker protocol cancels an in-progress preview, then completes the ne
   await surface.onmessage({data:{id:2,model,resolution:28,draft:true,shading:true}});
   const draft=messages.at(-1).message;assert.equal(draft.id,2);assert.equal(draft.ao,undefined,'interaction ignores requested settled shading');assert.ok(Number.isFinite(draft.milliseconds));assert.deepEqual(draft.mesh,generatePreviewMesh(model,28));assert.equal(messages.at(-1).options.transfer.length,3);
   await surface.onmessage({data:{id:3,model,resolution:28,shading:true}});
-  const settled=messages.at(-1).message;assert.deepEqual(settled.mesh,generateMesh(model,28));assert.equal(settled.ao.length,settled.mesh.positions.length/3);assert.equal(messages.at(-1).options.transfer.length,4);
+  const settled=messages.at(-1).message;assert.deepEqual(settled.mesh,generateMesh(model,28,previewRefinement(false)));assert.equal(settled.ao.length,settled.mesh.positions.length/3);assert.equal(messages.at(-1).options.transfer.length,4);
   await surface.onmessage({data:{id:4,model,resolution:28,task:'audit',draft:true,shading:true}});
   const audit=messages.at(-1).message;assert.equal(audit.id,4);assert.equal(audit.mesh,undefined);assert.equal(audit.check.audit.triangles,generateMesh(model,28).indices.length/3);assert.equal(audit.check.audit.boundaryEdges,0);
  }finally{if(previous===undefined)delete globalThis.self;else globalThis.self=previous;}
