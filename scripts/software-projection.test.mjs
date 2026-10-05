@@ -86,11 +86,11 @@ test('software lighting normalizes shared vertex normals before interpolation',(
 test('software settles to finer geometry while expensive work and drafts remain bounded',()=>{
  const model=cloneModel(DEFAULT_MODEL);
  assert.equal(softwarePreviewResolution(model,{mobile:true,editing:true}),40);
- assert.equal(softwarePreviewResolution(model,{mobile:false,editing:false}),96);
- assert.equal(softwarePreviewResolution(model,{mobile:true,editing:false,previous:{resolution:40,milliseconds:40}}),96);
- assert.equal(softwarePreviewResolution(model,{mobile:true,editing:false,previous:{resolution:40,milliseconds:2000}}),64);
+ assert.equal(softwarePreviewResolution(model,{mobile:false,editing:false}),164);
+ assert.equal(softwarePreviewResolution(model,{mobile:true,editing:false,previous:{resolution:40,milliseconds:40}}),136);
+ assert.equal(softwarePreviewResolution(model,{mobile:true,editing:false,previous:{resolution:40,milliseconds:2000}}),136);
  assert.equal(softwarePreviewResolution(model,{mobile:true,editing:true,previous:{resolution:40,milliseconds:2000}}),28);
- assert.equal(softwarePreviewResolution(model,{mobile:false,editing:false,previous:{resolution:40,milliseconds:NaN}}),96);
+ assert.equal(softwarePreviewResolution(model,{mobile:false,editing:false,previous:{resolution:40,milliseconds:NaN}}),164);
  assert.equal(DEFAULT_MODEL.width,model.width,'display quality does not edit model intent');
 });
 

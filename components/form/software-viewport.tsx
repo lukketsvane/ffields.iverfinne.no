@@ -2,7 +2,7 @@
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {clamp,cloneModel,generateMeshAsync,modelBounds,sectionContoursAsync,withoutRipples} from '@/lib/form-engine';
 import type {FormModel,MeshData,SectionContours} from '@/lib/form-engine';
-import {LatestPreviewScheduler} from '@/lib/preview-scheduler';
+import {LatestPreviewScheduler,previewRefinement} from '@/lib/preview-scheduler';
 import {selectedHandle,projectedHandleHit,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '@/lib/direct-manipulation';
 import {pickCurrentSurface} from '@/lib/implicit-picking';
 import type {DirectHandle,DirectTransformMode,DirectTransformPatch} from '@/lib/direct-manipulation';
@@ -109,7 +109,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    if(disposed)return;
    if(worker){worker.postMessage(job);return}
    const controller=new AbortController();fallback=controller;const started=performance.now();
-   generateMeshAsync(job.model,job.resolution,undefined,undefined,{signal:controller.signal,budgetMs:6,draft:job.draft}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:String(error))).finally(()=>{if(fallback===controller)fallback=undefined});
+   generateMeshAsync(job.model,job.resolution,previewRefinement(job.draft),undefined,{signal:controller.signal,budgetMs:6,draft:job.draft}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:String(error))).finally(()=>{if(fallback===controller)fallback=undefined});
   };
   const submit=(model:FormModel,draft:boolean)=>{
    const id=draft?++request:request;if(queue.current&&queue.current.id!==id){worker?.postMessage({cancel:queue.current.id});fallback?.abort()}queue.invalidate(id);if(document.hidden)queue.pause();

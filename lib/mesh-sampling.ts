@@ -7,8 +7,10 @@ export type MeshSamplingStats={
  /** Largest interval on each sampling axis; this is not a surface tolerance. */
  maxSpacing:[number,number,number];addedPlanes:[number,number,number];
  featureAligned:boolean;budgetLimited:boolean;
- /** Separation from an authored face for each paired sampling plane. */
+ /** Separation for paired box-face planes. */
  facePlaneOffset?:number;
+ /** Wider circular layers avoid Float32 collapse near coincident rims. */
+ curvedLayerOffset?:number;
  quantizationLimited?:boolean;
  /** Deterministic fractions of an ordinary interval used on a guarded retry. */
  gridPhase?:[number,number,number];
@@ -18,7 +20,7 @@ export type MeshSamplingGrid={coordinates:[number[],number[],number[]];sampling:
 
 const MIN_PLANE_GAP=.00025,MAX_ADDED_PLANES=24,MAX_SAMPLE_GROWTH=1.75;
 
-/** A bounded nonuniform sampling grid around eligible authored box faces.
+/** A bounded nonuniform sampling grid around authored planar features.
  * Paired planes straddle a face rather than putting it on a grid node: an exact
  * zero there can collapse distinct edge roots onto one Float32 coordinate.
  * The planes improve detected sharp rims; they cannot certify fit, detect every
@@ -43,6 +45,7 @@ export function createMeshSamplingGrid(model:FormModel,bounds:readonly number[],
  else if(model.shell)skippedReason='shell';
  else if(model.lattice?.enabled)skippedReason='lattice';
  const faceLevels:[number[],number[],number[]]=[[],[],[]];
+ const curvedLevels=[new Set<number>(),new Set<number>(),new Set<number>()];
  if(!skippedReason){
   const unions=(model.shapes??[]).filter(s=>s.enabled&&s.operation==='union');
   // A through-cut's distant caps do not intersect an unblended mass. Avoid
@@ -81,22 +84,46 @@ export function createMeshSamplingGrid(model:FormModel,bounds:readonly number[],
     if(face-FACE_OFFSET>bounds[a]&&face+FACE_OFFSET<bounds[a+3]&&!faceLevels[a].some(v=>Math.abs(v-face)<MIN_PLANE_GAP))faceLevels[a].push(face);
    }
   }
+  // A cylinder cap meeting a curved wall needs a layer on either side of the
+  // cap. Otherwise tetrahedra bridge the corner diagonally and a circle gains
+  // a staircase rim even though their vertices are accurate field roots.
+  // Local Y is the cap/tube axis. Only world-aligned planes are eligible;
+  // arbitrary rotations keep the ordinary grid and surface refinement.
+  for(const shape of shapes){
+   if(!shape.enabled||!['cylinder','torus'].includes(shape.kind))continue;
+   // Long through-bores spend planes on remote caps and can create thin cells
+   // beside unrelated curved ribs. Reserve cap layers for disc-like features.
+   if(shape.kind==='cylinder'&&shape.height>Math.min(shape.width,shape.depth))continue;
+   const [rx,ry,rz]=[shape.rx,shape.ry,shape.rz].map(v=>v*Math.PI/180);
+   const direction=[-Math.cos(ry)*Math.sin(rz),Math.cos(rx)*Math.cos(rz)-Math.sin(rx)*Math.sin(ry)*Math.sin(rz),Math.sin(rx)*Math.cos(rz)+Math.cos(rx)*Math.sin(ry)*Math.sin(rz)];
+   const axis=direction.findIndex(v=>Math.abs(v)>1-1e-9);
+   if(axis<0)continue;
+   const centre=[shape.x,shape.y,shape.z][axis];
+   // The torus centre layer captures its tube's radial extrema. It is a
+   // sampling feature, not an invented flat face or a changed torus surface.
+   const levels=shape.kind==='cylinder'?[centre-shape.height/2,centre+shape.height/2]:[centre];
+   for(const face of levels){
+    if(shape.operation==='subtract'&&massBounds&&(face<massBounds[axis]-FACE_OFFSET||face>massBounds[axis+3]+FACE_OFFSET))continue;
+    if(face-.02>bounds[axis]&&face+.02<bounds[axis+3]&&!faceLevels[axis].some(v=>Math.abs(v-face)<MIN_PLANE_GAP)){faceLevels[axis].push(face);curvedLevels[axis].add(face);}
+   }
+  }
   if(faceLevels.every(axis=>!axis.length))skippedReason='no eligible faces';
  }
- let acceptedFaces=0,budgetLimited=false;
+ let acceptedFaces=0,acceptedCurves=0,budgetLimited=false;
  // Round-robin axes prevent one direction consuming the entire sample budget.
  const groups=Math.max(...faceLevels.map(axis=>axis.length));
  for(let group=0;group<groups;group++)for(let a=0;a<3;a++){
   const face=faceLevels[a][group];if(face===undefined)continue;
-  const proposed=coordinates[a].filter(v=>Math.abs(v-face)>FACE_OFFSET*.9);
-  for(const value of [face-FACE_OFFSET,face+FACE_OFFSET])if(!proposed.some(v=>Math.abs(v-value)<MIN_PLANE_GAP))proposed.push(value);
+  const offset=curvedLevels[a].has(face)?.02:FACE_OFFSET;
+  const proposed=coordinates[a].filter(v=>Math.abs(v-face)>offset*.9);
+  for(const value of [face-offset,face+offset])if(!proposed.some(v=>Math.abs(v-value)<MIN_PLANE_GAP))proposed.push(value);
   proposed.sort((x,y)=>x-y);
   const added=proposed.length-(baseline[a]+1),samples=coordinates.reduce((product,axis,i)=>product*(i===a?proposed.length:axis.length),1);
   if(added>MAX_ADDED_PLANES||samples>sampleBudget){budgetLimited=true;continue;}
-  coordinates[a]=proposed;acceptedFaces++;
+  coordinates[a]=proposed;acceptedFaces++;if(curvedLevels[a].has(face))acceptedCurves++;
  }
  const sampling:MeshSamplingStats={resolution:cells,cells:coordinates.map(axis=>axis.length-1) as [number,number,number],nominalSpacing,
   maxSpacing:coordinates.map(axis=>axis.slice(1).reduce((largest,value,i)=>Math.max(largest,value-axis[i]),0)) as [number,number,number],
-  addedPlanes:coordinates.map((axis,a)=>Math.max(0,axis.length-baseline[a]-1)) as [number,number,number],featureAligned:acceptedFaces>0,budgetLimited,...(acceptedFaces?{facePlaneOffset:FACE_OFFSET}:{}),...(skippedReason?{skippedReason}:{}),...(options.gridPhase?{gridPhase:[...options.gridPhase]}:{})};
+  addedPlanes:coordinates.map((axis,a)=>Math.max(0,axis.length-baseline[a]-1)) as [number,number,number],featureAligned:acceptedFaces>0,budgetLimited,...(acceptedFaces?{facePlaneOffset:FACE_OFFSET}:{}),...(acceptedCurves?{curvedLayerOffset:.02}:{}),...(skippedReason?{skippedReason}:{}),...(options.gridPhase?{gridPhase:[...options.gridPhase]}:{})};
  return {coordinates,sampling};
 }
