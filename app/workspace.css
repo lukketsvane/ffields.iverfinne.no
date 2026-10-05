@@ -429,3 +429,14 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
 }
 @media(max-width:360px){.quick-value-line:has(.quick-value-done) select{width:60px}}
 @media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){.mobile-quick-workspace .solid-component-controls button,.mobile-quick-workspace .solid-component-controls a,.mobile-quick-workspace .solid-component-controls select{min-height:44px}}
+/* Safari keeps the canvas framing when a native editor receives focus. */
+@media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .form-app input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]),.form-app textarea,.form-app select{font-size:16px}
+ .quick-mode-select{width:96px}
+ .quick-value-line select{width:96px;text-overflow:ellipsis}
+}
+@media(max-width:360px){
+ .form-app .quick-mode-select{width:88px;padding:0 3px}
+ .form-app .quick-value-line select{width:82px}
+ .form-app .quick-value-line:has(.quick-value-done) select{width:60px}
+}
