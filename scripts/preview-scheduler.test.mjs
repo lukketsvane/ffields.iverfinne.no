@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LatestPreviewScheduler,previewResolution} from '../lib/preview-scheduler.ts';
+import {LatestPreviewScheduler,previewResolution,previewUpdateStage,previewNeedsSettle,previewRefinement,previewDetailResolution} from '../lib/preview-scheduler.ts';
 import {cloneModel,DEFAULT_MODEL,generateMesh,generatePreviewMesh,generateMeshAsync,sectionContours,sectionContoursAsync,modelBounds,evaluate} from '../lib/form-engine.ts';
 import {makeShape} from '../lib/shapes.ts';
 import {createStereoCameraStudy} from '../lib/stereo-camera-study.ts';
@@ -19,6 +19,35 @@ test('new input invalidates an old settled response before its debounce dispatch
  assert.deepEqual(queue.finish(1),{accept:false},'editing never gives stale results a bypass');
  assert.equal(queue.enqueue({id:1}),undefined,'older dispatch timers are ignored');
  assert.deepEqual(queue.enqueue({id:2}),{id:2});assert.deepEqual(queue.finish(2),{accept:true});
+});
+
+test('ordinary project load and committed changes start fine; focus and release never downgrade the same geometry',()=>{
+ assert.equal(previewUpdateStage(undefined,'camera',false),'settled');
+ const fine={geometry:'camera',stage:'settled'};
+ assert.equal(previewUpdateStage(fine,'camera',true),undefined,'opening a numeric input keeps the fine surface');
+ assert.equal(previewUpdateStage(fine,'camera',false),undefined,'releasing an unchanged grip does not remesh');
+ assert.equal(previewNeedsSettle(fine,'camera'),false);
+ assert.equal(previewUpdateStage(fine,'committed-cut',false),'settled','a button or project load never requests a coarse draft');
+ assert.equal(previewUpdateStage(fine,'dragged-camera',true),'draft','actual continuous geometry changes still get a responsive draft');
+ const draft={geometry:'dragged-camera',stage:'draft'};
+ assert.equal(previewNeedsSettle(draft,'dragged-camera'),true,'a paused focused input promotes without waiting for blur');
+ assert.equal(previewNeedsSettle(draft,'obsolete-camera'),false,'an old timer cannot promote a replaced model');
+ assert.equal(previewUpdateStage(draft,'dragged-camera',false),'settled','release requests only the fine phase');
+ const promoted={geometry:'dragged-camera',stage:'settled'};
+ assert.equal(previewUpdateStage(promoted,'dragged-camera',false),undefined,'blur after background completion cannot restart or downgrade it');
+});
+
+test('magnification refines display targets in bounded buckets and severely limited patches get only one grid retry',()=>{
+ assert.equal(previewRefinement(false,4).tolerance,.04);
+ assert.equal(previewRefinement(false,10).tolerance,.02);
+ assert.equal(previewRefinement(false,24).tolerance,.01);
+ assert.equal(previewRefinement(false,Infinity).tolerance,.04);
+ assert.equal(previewRefinement(true,100),undefined,'a continuous input draft remains bounded');
+ const severe={refinement:{qualityLimited:true,maxFaceResidualAfter:.6,meanFaceResidualAfter:.009}};
+ assert.equal(previewDetailResolution(severe,128),164);
+ assert.equal(previewDetailResolution(severe,164),undefined,'the finite retry cannot loop toward an unresolved crease');
+ assert.equal(previewDetailResolution({refinement:{...severe.refinement,meanFaceResidualAfter:.001}},128),undefined,'an already accurate circular plate does not spend another dense grid');
+ assert.equal(previewDetailResolution({refinement:{...severe.refinement,maxFaceResidualAfter:.05}},128),undefined,'a small sharp feature does not trigger bulk resampling');
 });
 
 test('background tabs and worker recovery retain the latest snapshot without duplicate work',()=>{

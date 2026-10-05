@@ -1,13 +1,42 @@
-import type {FormModel} from './form-engine.ts';
+import type {FormModel,MeshData} from './form-engine.ts';
 import type {MeshRefinementOptions} from './mesh-refinement.ts';
 
 export type PreviewQuality={mobile:boolean;editing:boolean;previous?:{resolution:number;milliseconds:number}};
+export type PreviewStage='draft'|'settled';
+export type ScheduledPreview={geometry:string;stage:PreviewStage};
+
+/** Focus/gesture state is not geometry. Opening a tool or releasing an
+ * unchanged grip must never replace an already fine surface with a draft.
+ * A committed/load operation begins directly at settled quality. Drafts are
+ * reserved for actual geometry changes during a continuous input gesture. */
+export function previewUpdateStage(previous:ScheduledPreview|undefined,geometry:string,editing:boolean):PreviewStage|undefined{
+ if(previous?.geometry===geometry)return previous.stage==='draft'&&!editing?'settled':undefined;
+ return editing?'draft':'settled';
+}
+
+/** Numeric focus can remain active indefinitely. Silence between geometry
+ * changes still promotes the latest draft without waiting for blur/release. */
+export function previewNeedsSettle(previous:ScheduledPreview|undefined,geometry:string):boolean{
+ return previous?.geometry===geometry&&previous.stage==='draft';
+}
 
 /** Automatically resolve curved display patches after interaction. Drafts
  * remain cheap; this changes neither the document nor export settings. Shared
  * worker/fallback policy keeps cancellation and topology guards identical. */
-export function previewRefinement(draft:boolean):MeshRefinementOptions|undefined{
- return draft?undefined:{tolerance:.04,maxPasses:3,maxTriangles:350000};
+export function previewRefinement(draft:boolean,pixelsPerUnit?:number):MeshRefinementOptions|undefined{
+ // Display refinement follows magnification in bounded buckets. Zooming out
+ // retains finer geometry; authored fields are never quantized to this grid.
+ const tolerance=Number.isFinite(pixelsPerUnit)&&pixelsPerUnit! >17.5 ? .01 : Number.isFinite(pixelsPerUnit)&&pixelsPerUnit! >8.75 ? .02 : .04;
+ return draft?undefined:{tolerance,maxPasses:3,maxTriangles:350000};
+}
+
+/** A single bounded retry for a severely unresolved complex patch. Merely
+ * reaching a pass limit or having a tiny crease residual cannot trigger it.
+ * Each independent solid is checked separately, so a body retry cannot spend
+ * another dense grid on an already accurate lens plate. */
+export function previewDetailResolution(mesh:MeshData,resolution:number):number|undefined{
+ const r=mesh.refinement;
+ return resolution<164&&r?.qualityLimited&&r.maxFaceResidualAfter>.15&&r.meanFaceResidualAfter>.004?164:undefined;
 }
 
 /** Bound preview sampling effort by the active evaluator complexity. This is

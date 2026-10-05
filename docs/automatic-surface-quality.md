@@ -5,9 +5,42 @@ uniform tetrahedral grid. The camera lens plate therefore gained a visibly
 stepped rim despite accurate vertex roots. Software previews also capped
 settled sampling at 96, and a slow draft could leave later settled work at 64.
 
-Both viewports now use one shared settled policy: 128–136 grid resolution on
-coarse-pointer devices, 160–164 elsewhere, followed by up to three conforming
+Both viewports now use one shared settled policy: 128–136 grid resolution in
+the mobile layout, 160–164 elsewhere, followed by up to three conforming
 surface-refinement passes (.04 field residual target, 350,000 triangle budget).
+Project loads and committed changes request that fine policy immediately.
+Continuous geometry edits alone use cheap drafts; after 160 ms without a new
+geometry change, refinement starts even while a numeric input remains focused.
+Opening a tool, releasing an unchanged grip and orbiting the camera retain the
+current fine mesh. Software navigation no longer switches to its remembered
+40-grid editing mesh. Fine-grid surfaces stream before additional refinement;
+every independent solid is included in each streamed frame. Intermediate
+frames retain the queue and busy state. Software rendering only reports ready
+after its complete final frame reaches the visible canvas.
+
+Zoom magnification selects .04, .02 or .01 field-residual targets, with the same
+finite pass/triangle limits. A severely limited solid (maximum face residual
+above .15 and mean above .004) can make one bounded sampling retry to 164.
+Other already accurate solids retain their own meshes. No retries chase an
+unresolved crease indefinitely. Measurements of the actual 20-shape camera
+show that increasing uniform sampling beyond 192 brings diminishing returns
+at difficult CSG creases; these targets are sampled display quality, not
+manufacturing tolerances or a proof of a globally exact triangle surface.
+
+The most recent complete fine result is cached with its exact authored field,
+sampling request, refinement target and engine version. Reload can restore it
+while an obsolete calculation is cancelled; draft/intermediate frames are not
+cached. Storage failure never blocks ordinary evaluation. WebGL uses device
+pixel ratio up to 3 when settled; the software fallback uses up to 2.
+
+The software fallback rasterizes all projected faces into a typed depth buffer
+with interpolated vertex lighting and four subpixel samples. It publishes one
+complete image instead of allocating a Canvas gradient and fill/stroke path for
+each fine face. This removes the triangle-edge grid pattern and the expensive
+native drawing loop without simplifying the mesh. Cooperative chunks keep
+input responsive. Resizing retains the previous complete image while the new
+frame is rendered.
+
 Interactive drafts keep their previous adaptive budget and four-pass edge roots.
 New geometry and camera presets also preempt an obsolete partially painted
 software frame, instead of waiting for its dense triangles to finish.

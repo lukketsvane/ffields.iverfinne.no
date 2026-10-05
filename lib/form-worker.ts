@@ -25,8 +25,12 @@ self.onmessage=async(event)=>{
    const stl=binarySTL(mesh);self.postMessage({id,stl,check},{transfer:[stl]});return;
   }
   controller=new AbortController();previews.get(id)?.abort();previews.set(id,controller);
-  const options={signal:controller.signal,budgetMs:8,draft:data.draft===true};
-  const mesh=await generateMeshAsync(model,data.resolution,previewRefinement(options.draft),undefined,options);
+  const options={signal:controller.signal,budgetMs:8,draft:data.draft===true,previewDetail:data.previewDetail===true,...(data.streamSurface&&!data.draft?{onSurface:(mesh:import('./form-engine').MeshData)=>{
+   // Clone this intermediate frame: refinement still owns these buffers.
+   // The final result alone transfers ownership and releases the queue.
+   if(!controller?.signal.aborted)self.postMessage({id,mesh,stage:'surface'});
+  }}:{})};
+  const mesh=await generateMeshAsync(model,data.resolution,previewRefinement(options.draft,data.pixelsPerUnit),undefined,options);
   const ao=data.shading&&!data.draft?await previewAmbientOcclusion(model,mesh,options):undefined;
   if(controller.signal.aborted){self.postMessage({id,aborted:true});return}
   self.postMessage({id,mesh,...(ao?{ao}:{}),milliseconds:performance.now()-started},{transfer:[mesh.positions.buffer,mesh.normals.buffer,mesh.indices.buffer,...(ao?[ao.buffer]:[])]});

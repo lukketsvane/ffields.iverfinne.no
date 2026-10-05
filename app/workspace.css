@@ -364,3 +364,79 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
 @media(min-width:600px) and (max-width:760px) and (max-height:520px), (min-width:600px) and (max-width:960px) and (max-height:520px) and (pointer:coarse){
  .mesh-working .asset-browser,.mesh-working .project-browser{height:calc(100% - var(--dock-bottom) - var(--top) - 61px - var(--job-height))}
 }
+
+/* The phone canvas stays clear. Extra controls expand inside one short tool strip. */
+.quick-mode-select,.quick-value-line select{min-height:44px;max-width:100%;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--control);color:var(--foreground);font-size:13px;touch-action:manipulation}
+.quick-mode-select{width:84px;flex-shrink:0}
+.quick-value-line select{width:90px;flex-shrink:0}
+.quick-detail-actions{display:flex;gap:6px;margin-top:6px}
+.quick-detail-actions>button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;background:var(--control);color:var(--label);font-size:12px}
+.quick-content{min-height:0}
+.quick-minimized .quick-heading{margin-bottom:0}
+.quick-value-line>label{gap:6px}
+.quick-value-line input{max-width:85px;min-width:44px;font-size:18px}
+.quick-heading>button{padding:0;flex-basis:44px}
+.quick-heading{min-height:44px;margin-bottom:0}
+.quick-value-line{min-height:44px}
+.quick-content .solid-component-controls{margin-top:8px}
+
+@media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .form-app{--dock-height:48px;--dock-bottom:calc(8px + max(env(safe-area-inset-bottom),var(--keyboard-inset,0px)));--tool-space:calc(100% - var(--dock-bottom) - var(--dock-height) - var(--top) - var(--job-height) - 8px)}
+ .toolbar{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+ .toolbar-start{max-width:100%;flex:1}
+ .mobile-document-button{flex:1;min-width:0;height:42px}
+ .mobile-document-button>span{max-width:none;flex:1;text-align:left}
+ .form-app .scene{bottom:calc(56px + env(safe-area-inset-bottom))}
+ .viewport-viewbar,.camera-controls,.canvas-controls,.mobile-project-entry{display:none}
+ .section-control{top:6px;left:10px;max-width:calc(100% - 20px);width:250px;background:var(--panel);z-index:11}
+ .mobile-dock,.quick-tools-desktop .mobile-dock{height:var(--dock-height);left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));padding:1px 3px;border-radius:11px}
+ .mobile-dock .quick-dock-button{min-height:44px;gap:2px}
+ .quick-open .mobile-dock,.panel-open .mobile-dock,.tray-open .mobile-dock{border-radius:0 0 11px 11px}
+ .mobile-quick-workspace,.quick-tools-desktop .mobile-quick-workspace{bottom:calc(var(--dock-bottom) + var(--dock-height) - 1px);left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));padding:0 7px 5px;border-radius:11px 11px 0 0;max-height:min(280px,32%,var(--tool-space))}
+ .mobile-quick-workspace.quick-edit:not(.quick-details-open),.mobile-quick-workspace.quick-material:not(.quick-details-open){max-height:min(102px,var(--tool-space));overflow-y:auto;overflow-x:hidden}
+ .mobile-quick-workspace.quick-minimized{max-height:49px}
+ .quick-heading{margin:0;min-height:44px}
+ .quick-heading>strong{font-size:12px;padding-left:2px}
+ .quick-heading>button{min-height:44px;min-width:44px}
+ .quick-value-line{gap:4px}
+ .quick-value-line>label{gap:4px}
+ .quick-value-line select{width:82px;padding:0 3px;font-size:12px}
+ .quick-value-line input{max-width:76px;font-size:18px}
+ .quick-shape-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}
+ .quick-cut .quick-shape-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+ .quick-shape-grid>button{min-height:58px;padding:4px 0;gap:4px;font-size:10px;border-color:transparent;background:transparent}
+ .quick-shape-grid>button:active{background:var(--selected)}
+ .quick-view-grid{margin:0 0 5px}
+ .quick-more-grid{gap:4px}
+ .quick-object-list{padding-top:2px}
+ .quick-linked-cut>p{margin:3px 0 5px;font-size:11px}
+ .floating-panel,.inspector-closed .floating-panel{bottom:calc(var(--dock-bottom) + var(--dock-height) - 1px);left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));max-height:min(320px,40%,var(--tool-space));border-radius:11px 11px 0 0}
+ .mesh-working .mobile-quick-workspace{max-height:min(280px,32%,var(--tool-space))}
+ .mesh-working .floating-panel{max-height:min(320px,40%,var(--tool-space))}
+ .asset-browser,.project-browser,.alternatives,.relationship-graph{bottom:calc(var(--dock-bottom) + var(--dock-height) - 1px);max-height:min(320px,40%,var(--tool-space))}
+}
+@media(max-width:360px){
+ .quick-mode-select{width:70px;padding:0 3px;font-size:12px}
+ .quick-value-line select{width:74px}
+ .quick-value-line input{max-width:56px}
+ .quick-value-line>label>span{display:none}
+}
+@media(min-width:600px) and (max-width:760px) and (max-height:520px), (min-width:600px) and (max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .mobile-quick-workspace,.quick-tools-desktop .mobile-quick-workspace,.floating-panel,.inspector-closed .floating-panel{left:auto;width:326px;max-height:calc(100% - var(--dock-bottom) - var(--top) - var(--dock-height) - var(--job-height) - 8px)}
+ .mobile-quick-workspace.quick-edit:not(.quick-details-open),.mobile-quick-workspace.quick-material:not(.quick-details-open){max-height:102px}
+ .mobile-quick-workspace.quick-minimized{max-height:49px}
+ .asset-browser,.project-browser,.alternatives,.relationship-graph{left:auto;width:326px;max-height:calc(100% - var(--dock-bottom) - var(--top) - var(--dock-height) - var(--job-height) - 8px)}
+}
+@media(max-width:360px){.quick-value-line:has(.quick-value-done) select{width:60px}}
+@media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){.mobile-quick-workspace .solid-component-controls button,.mobile-quick-workspace .solid-component-controls a,.mobile-quick-workspace .solid-component-controls select{min-height:44px}}
+/* Safari keeps the canvas framing when a native editor receives focus. */
+@media(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse){
+ .form-app input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]),.form-app textarea,.form-app select{font-size:16px}
+ .quick-mode-select{width:96px}
+ .quick-value-line select{width:96px;text-overflow:ellipsis}
+}
+@media(max-width:360px){
+ .form-app .quick-mode-select{width:88px;padding:0 3px}
+ .form-app .quick-value-line select{width:82px}
+ .form-app .quick-value-line:has(.quick-value-done) select{width:60px}
+}

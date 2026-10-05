@@ -1,4 +1,5 @@
 import {hasSolidComponents,solidComponents,combineComponentMeshes} from './solid-components.ts';
+import {previewDetailResolution} from './preview-scheduler.ts';
 import assetCatalog from './asset-catalog.json' with {type:'json'};
 import type {PlacedAsset} from './assets';
 import {refineMeshSurface,refineMeshSurfaceAsync} from './mesh-refinement.ts';
@@ -72,6 +73,11 @@ export function evaluateBase(m:FormModel,x:number,y:number,z:number,compiledShap
   if(!cached||cached.model!==m){const parts=solidComponents(m);cached={model:m,fields:parts.map(part=>({model:part.model,compiled:part.shapeIds.map(id=>compiledShapes?.[(m.shapes??[]).findIndex(shape=>shape.id===id)]??compileShape(part.model.shapes!.find(shape=>shape.id===id)!))}))};if(compiledShapes)componentFieldCache.set(compiledShapes,cached);}
   let distance=Infinity;for(const part of cached.fields)distance=Math.min(distance,evaluateBase(part.model,x,y,z,part.compiled));return distance;
  }
+ return evaluateSingleSolidBase(m,x,y,z,compiledShapes);
+}
+/** The owner split is already fixed for a bulk mesh snapshot. Keeping it out
+ * of this inner loop avoids scanning every shape at each field/root sample. */
+function evaluateSingleSolidBase(m:FormModel,x:number,y:number,z:number,compiledShapes?:readonly ShapeEvaluator[]){
 const px=x,py=y,pz=z,protect=protection(m,x,y,z);let radial=0,flattenAmount=0,flattenCentre=0,flattenWeight=0;for(const f of m.influences){if(!f.enabled||f.kind==='wave')continue;const w=weight(f,px,py,pz)*protect,s=f.strength*w;switch(f.kind){case 'grip':z-=s;x-=s*.12;break;case 'bulge':radial+=s;break;case 'pinch':radial-=s;break;case 'flatten':flattenAmount+=s;flattenCentre+=f.z*Math.abs(s);flattenWeight+=Math.abs(s);break;case 'twist':{const a=s*Math.PI/180,yy=y,zz=z;y=yy*Math.cos(a)-zz*Math.sin(a);z=yy*Math.sin(a)+zz*Math.cos(a);break}}}
  if(flattenWeight>0){const plane=flattenCentre/flattenWeight,compression=clamp(flattenAmount/28,-.5,.8);z=plane+(z-plane)/(1-compression)}
  y-=m.asymmetry*(x/m.width)*.25;const r=Math.min(m.softness,m.height/2-1,m.depth/2-1);let exterior=m.baseEnabled===false?Infinity:roundBox(x,y,z,m.width/2,m.height/2,m.depth/2,r);
@@ -98,10 +104,32 @@ const px=x,py=y,pz=z,protect=protection(m,x,y,z);let radial=0,flattenAmount=0,fl
 }
 export function evaluate(m:FormModel,x:number,y:number,z:number){
  if(!m.influences.some(f=>f.kind==='wave'&&f.enabled&&f.strength!==0))return evaluateBase(m,x,y,z);
+ return evaluateBase(m,x,y,inverseRippleZ(m,x,y,z));
+}
+function inverseRippleZ(m:FormModel,x:number,y:number,z:number){
  // Invert the monotonic Z displacement. Newton converges to sub-micron accuracy.
  let q=z-rippleOffset(m,x,y,z);
  for(let i=0;i<3;i++){const delta=rippleOffset(m,x,y,q),slope=(rippleOffset(m,x,y,q+.01)-delta)/.01;q-=(q+delta-z)/(1+slope)}
- return evaluateBase(m,x,y,q);
+ return q;
+}
+/** Fixed snapshots compile shape/sweep data and independent solid ownership
+ * once. The field mathematics and Boolean ordering remain pointwise identical. */
+function compileBaseField(m:FormModel):ShapeEvaluator{
+ if(hasSolidComponents(m)){
+  const fields=solidComponents(m).map(part=>compileBaseField(part.model));
+  return (x,y,z)=>{let distance=Infinity;for(const field of fields)distance=Math.min(distance,field(x,y,z));return distance;};
+ }
+ const compiled=(m.shapes??[]).map(shape=>shape.enabled?compileShape(shape):()=>Infinity);
+ return (x,y,z)=>evaluateSingleSolidBase(m,x,y,z,compiled);
+}
+function prepareModelField(m:FormModel):ShapeEvaluator{
+ const base=compileBaseField(m);
+ return m.influences.some(f=>f.kind==='wave'&&f.enabled&&f.strength!==0)?(x,y,z)=>base(x,y,inverseRippleZ(m,x,y,z)):base;
+}
+/** An immutable field snapshot for repeated sampling, including ripple inverse
+ * and scoped components. Later authoring edits cannot invalidate its caches. */
+export function compileModelField(input:FormModel):ShapeEvaluator{
+ return prepareModelField(cloneModel(input));
 }
 export function makeInfluence(kind:InfluenceKind):Influence {const names={wave:'Travelling wave',grip:'Grip field',bulge:'Local fullness',pinch:'Local pinch',flatten:'Planar zone',twist:'Local twist'};return {id:kind+'-'+Math.random().toString(36).slice(2,9),name:names[kind],kind,enabled:true,strength:kind==='twist'?18:7,radius:45,x:25,y:0,z:22,wavelength:60,phase:0,angle:0,falloff:'gaussian'}}
 export function validateModel(input:unknown):FormModel {
@@ -148,7 +176,7 @@ export function modelBounds(m:FormModel,includeRipples=true):number[]{
 /** One deterministic mesher shared by workers, synchronous exports and the
  * cooperative preview fallback. Steps yield between bounded sample/cell groups;
  * they never change the grid, field roots, topology or output ordering. */
-function* meshSteps(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,rootRefinementPasses=24):Generator<void,MeshData,void> {m=resolveAttachments(m);const compiledShapes=(m.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity),field=(x:number,y:number,z:number)=>evaluateBase(m,x,y,z,compiledShapes);const b=modelBounds(m,false),{coordinates,sampling}=createMeshSamplingGrid(m,b,resolution,samplingOptions),nx=coordinates[0].length-1,ny=coordinates[1].length-1,nz=coordinates[2].length-1;const row=nx+1,layer=row*(ny+1);const values=new Float32Array(layer*(nz+1));let sampled=0;yield;for(let k=0;k<=nz;k++)for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){const v=field(coordinates[0][i],coordinates[1][j],coordinates[2][k]);values[k*layer+j*row+i]=Math.abs(v)<1e-7?1e-7:v;if(++sampled%128===0)yield}const positions:number[]=[],normals:number[]=[],indices:number[]=[];const edges=new Map<string,number>();const offsets=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];const tets=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];const ids=new Array<number>(8),pts=new Array<number[]>(8);let volume=0;let direction=[0,0,1];
+function* meshSteps(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,rootRefinementPasses=24):Generator<void,MeshData,void> {m=resolveAttachments(m);const field=compileBaseField(m);const b=modelBounds(m,false),{coordinates,sampling}=createMeshSamplingGrid(m,b,resolution,samplingOptions),nx=coordinates[0].length-1,ny=coordinates[1].length-1,nz=coordinates[2].length-1;const row=nx+1,layer=row*(ny+1);const values=new Float32Array(layer*(nz+1));let sampled=0;yield;for(let k=0;k<=nz;k++)for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){const v=field(coordinates[0][i],coordinates[1][j],coordinates[2][k]);values[k*layer+j*row+i]=Math.abs(v)<1e-7?1e-7:v;if(++sampled%128===0)yield}const positions:number[]=[],normals:number[]=[],indices:number[]=[];const edges=new Map<string,number>();const offsets=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];const tets=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];const ids=new Array<number>(8),pts=new Array<number[]>(8);let volume=0;let direction=[0,0,1];
 function vertex(a:number,b:number){const ia=ids[a],ib=ids[b],key=ia<ib?ia+':'+ib:ib+':'+ia;const found=edges.get(key);if(found!==undefined)return found;const va=values[ia],vb=values[ib],pa=pts[a],pb=pts[b];let t=va/(va-vb),lo=0,hi=1,vlo=va,vhi=vb,x=pa[0]+(pb[0]-pa[0])*t,y=pa[1]+(pb[1]-pa[1])*t,z=pa[2]+(pb[2]-pa[2])*t;
 // Refine against the actual field while remaining on the shared tetrahedron
 // edge. This improves circular bores and sharp CSG seams without moving a
@@ -195,7 +223,7 @@ if(yield* collapsedFaceSteps(mesh)){
   return {...fallback,sampling:{...fallback.sampling!,quantizationLimited:true,skippedReason:'quantization'}};
  }
 }
-return refinement?{...refineMeshSurface(mesh,m.influences.some(f=>f.kind==='wave'&&f.enabled)?(x,y,z)=>evaluate(m,x,y,z):field,refinement),sampling}:mesh;}
+return refinement?{...refineMeshSurface(mesh,m.influences.some(f=>f.kind==='wave'&&f.enabled)?prepareModelField(m):field,refinement),sampling}:mesh;}
 /** Authoritative synchronous geometry path. Preview stepping does not lower
  * export resolution or bypass the existing quantization/refinement guards. */
 export function generateMesh(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions):MeshData {
@@ -218,6 +246,12 @@ export type AsyncMeshOptions={
  /** Injected in deterministic tests; production yields to browser task input. */
  yieldControl?:()=>Promise<void>;
  now?:()=>number;
+ /** Fine-grid viewport surface before optional conforming refinement. Called
+  * once for a complete model, including all independently owned solids. The
+  * callback does not finish a queued preview or lower its final accuracy. */
+ onSurface?:(mesh:MeshData)=>void;
+ /** Viewport-only bounded sampling retry after severely limited refinement. */
+ previewDetail?:boolean;
 };
 const yieldMeshTask=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,0));
 /** Cooperative fallback for viewport previews when module workers are blocked.
@@ -225,10 +259,30 @@ const yieldMeshTask=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,0)
  * requesting a draft caps only edge-root iterations. Refinement is cooperative
  * too, preserving the complete authoritative algorithm and accepted patches. */
 export async function generateMeshAsync(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,options:AsyncMeshOptions={}):Promise<MeshData> {
- if(hasSolidComponents(m)){const parts=solidComponents(m),meshes:MeshData[]=[];for(const part of parts)meshes.push(await generateMeshAsync(part.model,resolution,refinement,samplingOptions,options));return combineComponentMeshes(parts,meshes);}
+ if(hasSolidComponents(m)){
+  const parts=solidComponents(m),meshes:MeshData[]=[],partOptions={...options,onSurface:undefined};
+  // Complete the fine sampling of every solid before spending additional
+  // time on refinement. A streamed frame never temporarily loses a part.
+  for(const part of parts)meshes.push(await generateMeshAsync(part.model,resolution,undefined,samplingOptions,partOptions));
+  if(!refinement)return combineComponentMeshes(parts,meshes);
+  options.onSurface?.(combineComponentMeshes(parts,meshes));
+  for(let i=0;i<parts.length;i++)meshes[i]=await refineModelMeshAsync(parts[i].model,meshes[i],refinement,partOptions);
+  if(options.previewDetail)for(let i=0;i<parts.length;i++){
+   const detail=previewDetailResolution(meshes[i],resolution);if(!detail)continue;
+   options.onSurface?.(combineComponentMeshes(parts,meshes));
+   meshes[i]=await generateMeshAsync(parts[i].model,detail,refinement,samplingOptions,{...partOptions,previewDetail:false,onSurface:options.onSurface?surface=>{const frame=meshes.slice();frame[i]=surface;options.onSurface?.(combineComponentMeshes(parts,frame));}:undefined});
+  }
+  return combineComponentMeshes(parts,meshes);
+ }
  const mesh=await drainSteps(meshSteps(m,resolution,undefined,samplingOptions,options.draft?4:24),options);
  if(!refinement)return mesh;
- const resolved=resolveAttachments(m),compiled=(resolved.shapes??[]).map(s=>s.enabled?compileShape(s):()=>Infinity),field=resolved.influences.some(f=>f.kind==='wave'&&f.enabled)?(x:number,y:number,z:number)=>evaluate(resolved,x,y,z):(x:number,y:number,z:number)=>evaluateBase(resolved,x,y,z,compiled);
+ options.onSurface?.(mesh);
+ const refined=await refineModelMeshAsync(m,mesh,refinement,options),detail=options.previewDetail?previewDetailResolution(refined,resolution):undefined;
+ if(detail){options.onSurface?.(refined);return generateMeshAsync(m,detail,refinement,samplingOptions,{...options,previewDetail:false});}
+ return refined;
+}
+async function refineModelMeshAsync(m:FormModel,mesh:MeshData,refinement:MeshRefinementOptions,options:AsyncMeshOptions):Promise<MeshData>{
+ const resolved=resolveAttachments(m),field=prepareModelField(resolved);
  return {...await refineMeshSurfaceAsync(mesh,field,refinement,options),sampling:mesh.sampling};
 }
 function* collapsedFaceSteps(mesh:MeshData):Generator<void,boolean,void>{

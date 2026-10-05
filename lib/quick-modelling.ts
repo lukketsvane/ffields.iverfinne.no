@@ -22,7 +22,7 @@ export function quickEntryPanel(model:FormModel,selected:string):'edit'|'objects
 export function scrubKeyValue(value:number,min:number,max:number,step:number,key:string):number|undefined {
  if(key==='Home')return min;if(key==='End')return max;
  const direction=key==='ArrowRight'||key==='ArrowUp'?1:key==='ArrowLeft'||key==='ArrowDown'?-1:key==='PageUp'?10:key==='PageDown'?-10:0;
- return direction?bounded(Math.round((value+direction*step)*1000)/1000,min,max):undefined;
+ return direction?bounded(value+direction*step,min,max):undefined;
 }
 
 /** Mode changes retain authored cell/skin/region settings for the next visit. */
