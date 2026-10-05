@@ -64,7 +64,9 @@ export function fitSoftwareCamera(camera:SoftwareCamera,bounds:readonly number[]
 export function softwareView(camera:SoftwareCamera,view:'front'|'top'|'perspective'):SoftwareCamera{
  return {...camera,yaw:view==='perspective'?.62:0,pitch:view==='top'?Math.PI/2:view==='perspective'?.34:0};
 }
-export function projectSoftwareMesh(mesh:MeshData,camera:SoftwareCamera,frame:SoftwareFrame){
+/** Painter order remains the default for picking and Canvas paths. A depth
+ * buffer resolves visibility directly and can skip the triangle sort. */
+export function projectSoftwareMesh(mesh:MeshData,camera:SoftwareCamera,frame:SoftwareFrame,options:{sortDepth?:boolean}={}){
  const points:ProjectedPoint[]=[],triangles:ProjectedTriangle[]=[],shades=new Float32Array(mesh.positions.length/3);
  // World-space lighting makes orbiting readable without implying simulation.
  const {right,up,forward}=softwareBasis(camera),lightLength=Math.hypot(-.36,.68,.64),light={x:-.36/lightLength,y:.68/lightLength,z:.64/lightLength};
@@ -81,7 +83,7 @@ export function projectSoftwareMesh(mesh:MeshData,camera:SoftwareCamera,frame:So
   if(facing<-.025)continue;
   triangles.push({a,b,c,depth:(points[a].depth+points[b].depth+points[c].depth)/3,shade:(shades[a]+shades[b]+shades[c])/3});
  }
- triangles.sort((a,b)=>a.depth-b.depth);
+ if(options.sortDepth!==false)triangles.sort((a,b)=>a.depth-b.depth);
  return {points,triangles,shades};
 }
 /** A linear Canvas2D gradient reproduces barycentric interpolation of the

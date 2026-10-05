@@ -11,7 +11,8 @@ import type {DirectHandle,DirectTransformMode,DirectTransformPatch} from '@/lib/
 import {TouchSession} from '@/lib/touch-session';
 import {PALETTES} from '@/lib/appearance';
 import type {Appearance} from '@/lib/appearance';
-import {fitSoftwareCamera,softwareCameraRay,projectSoftwareMesh,projectSoftwarePoint,softwarePlaneDelta,softwareView,softwareTriangleGradient,softwarePreviewResolution,softwareInteractionShouldCancel} from '@/lib/software-projection';
+import {fitSoftwareCamera,softwareCameraRay,projectSoftwareMesh,projectSoftwarePoint,softwarePlaneDelta,softwareView,softwarePreviewResolution,softwareInteractionShouldCancel} from '@/lib/software-projection';
+import {softwareRasterSteps} from '@/lib/software-raster';
 import type {SoftwareCamera,SoftwareFrame} from '@/lib/software-projection';
 import type {ViewportRef,ViewMode} from './viewport';
 
@@ -47,8 +48,8 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   const invalidate=()=>{if(disposed||document.hidden)return;if(continuation){needsDraw=true;refreshOverlay();return}revision++;if(!frameId)frameId=requestAnimationFrame(draw)};
   // New geometry or a camera preset must discard an obsolete partial frame.
   // Selection-only changes can still refresh the existing complete overlay.
-  const preemptSurface=()=>{if(continuation){cancelAnimationFrame(continuation);continuation=0}needsDraw=false;revision++;invalidate()};
-  const preemptDetail=()=>{if(continuation&&!paintingDraft){cancelAnimationFrame(continuation);continuation=0;needsDraw=false;revision++}invalidate()};
+  const preemptSurface=()=>{if(continuation){window.clearTimeout(continuation);continuation=0}needsDraw=false;revision++;invalidate()};
+  const preemptDetail=()=>{if(continuation&&!paintingDraft){window.clearTimeout(continuation);continuation=0;needsDraw=false;revision++}invalidate()};
   const drawGrip=()=>{
    const p=latest.current;if(!p.handles||p.view==='silhouette')return;
    const handle=selectedHandle(p.model,p.selected);if(!handle)return;const mode=gripMode(handle);if(!mode)return;
@@ -74,33 +75,36 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
     publish();return;
    }
    const mesh=data;if(!mesh){publish();return}paintingDraft=dataIsDraft;
-   const key=JSON.stringify([cam,size]);if(mesh!==projectionMesh||key!==projectKey){projection=projectSoftwareMesh(mesh,cam,size);projectionMesh=mesh;projectKey=key}
+   const key=JSON.stringify([cam,size]);if(mesh!==projectionMesh||key!==projectKey){projection=projectSoftwareMesh(mesh,cam,size,{sortDepth:false});projectionMesh=mesh;projectKey=key}
    const current=projection!;
    const color=p.view==='silhouette'?PALETTES[p.appearance].silhouette:PALETTES[p.appearance].clay,base=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
-   const tone=(shade:number)=>`rgb(${base.map(channel=>Math.round(channel*shade)).join(',')})`;
-   // Preserve every generated triangle. Very dense surfaces paint in bounded
-   // chunks. New gestures coalesce into the next full frame; the previous
-   // complete surface stays visible and its grip updates during painting.
-   const paint=(start:number)=>{
-    if(disposed||revision!==token)return;
-    const end=Math.min(start+4000,current.triangles.length),started=performance.now();paintCtx.lineWidth=.45;let cursor=start;
-    for(;cursor<end;cursor++){
-     if(cursor>start&&(cursor-start)%128===0&&performance.now()-started>=8)break;
-     const t=current.triangles[cursor],a=current.points[t.a],b=current.points[t.b],c=current.points[t.c];
-     paintCtx.beginPath();paintCtx.moveTo(a.x,a.y);paintCtx.lineTo(b.x,b.y);paintCtx.lineTo(c.x,c.y);paintCtx.closePath();
-     let fill:string|CanvasGradient=p.view==='silhouette'?color:tone(t.shade);
-     if(!p.wireframe&&p.view!=='silhouette'){
-      const smooth=softwareTriangleGradient(current.points,current.shades,t);
-      if(smooth){const gradient=paintCtx.createLinearGradient(smooth.from.x,smooth.from.y,smooth.to.x,smooth.to.y);gradient.addColorStop(0,tone(smooth.low));gradient.addColorStop(1,tone(smooth.high));fill=gradient}
-     }
-     paintCtx.fillStyle=fill;paintCtx.strokeStyle=p.wireframe?PALETTES[p.appearance].grid:fill;if(!p.wireframe)paintCtx.fill();paintCtx.stroke();
-    }
-    if(cursor<current.triangles.length){refreshOverlay();continuation=requestAnimationFrame(()=>paint(cursor))}else{continuation=0;publish();if(needsDraw){needsDraw=false;invalidate()}}
+   const rgb=(value:string)=>[1,3,5].map(i=>parseInt(value.slice(i,i+2),16)) as [number,number,number];
+   const raster=softwareRasterSteps(current,size.width,size.height,{ratio,background:rgb(p.canvasColor??PALETTES[p.appearance].canvas),color:p.wireframe?rgb(PALETTES[p.appearance].grid):base as [number,number,number],silhouette:p.view==='silhouette',wireframe:p.wireframe});
+   // Compute bounded CPU chunks as tasks. RAF pacing belongs to presentation,
+   // not hundreds of chunks of geometric work in an embedded/background tab.
+   const paint=()=>{
+    if(disposed||revision!==token){raster.return(undefined as never);return}
+    const started=performance.now();let step=raster.next();
+    while(!step.done&&performance.now()-started<8)step=raster.next();
+    if(!step.done){continuation=window.setTimeout(paint,0);return}
+    continuation=0;paintCtx.setTransform(1,0,0,1,0,0);
+    paintCtx.putImageData(new ImageData(step.value.pixels,step.value.width,step.value.height),0,0);
+    el!.dataset.previewRenderedTriangles=String(step.value.testedTriangles);
+    publish();if(needsDraw){needsDraw=false;invalidate()}
    };
-   paint(0);
+   paint();
   }
   const fit=(view?:'front'|'top'|'perspective')=>{if(view)camera=softwareView(camera,view);camera=fitSoftwareCamera(camera,data?.indices.length?data.bounds:modelBounds(latest.current.model,false),size);fitted=true;preemptSurface()};
-  const resize=()=>{size={width:Math.max(1,el.clientWidth),height:Math.max(1,el.clientHeight)};const ratio=Math.min(window.devicePixelRatio||1,2);if(continuation)cancelAnimationFrame(continuation);continuation=0;needsDraw=false;for(const target of [surface,back,front]){target.width=Math.round(size.width*ratio);target.height=Math.round(size.height*ratio)}invalidate()};
+  const resize=()=>{
+   const previous=document.createElement('canvas');previous.width=front.width;previous.height=front.height;previous.getContext('2d')?.drawImage(front,0,0);
+   size={width:Math.max(1,el.clientWidth),height:Math.max(1,el.clientHeight)};const ratio=Math.min(window.devicePixelRatio||1,2);
+   if(continuation)window.clearTimeout(continuation);continuation=0;needsDraw=false;
+   for(const target of [surface,back,front]){target.width=Math.round(size.width*ratio);target.height=Math.round(size.height*ratio)}
+   // A keyboard/tray resize keeps the last complete fine frame while the new
+   // camera projection is rasterized. Never clear the usable surface to blank.
+   if(previous.width&&previous.height)frontCtx.drawImage(previous,0,0,front.width,front.height);
+   refreshOverlay();invalidate();
+  };
   const complete=(job:Job,mesh?:MeshData,message?:string,milliseconds?:number)=>{
    const result=queue.finish(job.id);
    if(result.accept&&!disposed){
@@ -124,7 +128,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   };
   const submit=(model:FormModel,draft:boolean,newRevision:boolean)=>{
    const id=newRevision?++request:request;if(queue.current&&queue.current.id!==id){worker?.postMessage({cancel:queue.current.id});fallback?.abort()}queue.invalidate(id);if(document.hidden)queue.pause();
-   const mobile=matchMedia('(pointer: coarse)').matches,resolution=softwarePreviewResolution(model,{mobile,editing:draft,previous});
+   const mobile=matchMedia('(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse)').matches,resolution=softwarePreviewResolution(model,{mobile,editing:draft,previous});
    const pixelsPerUnit=camera.scale*Math.min(window.devicePixelRatio||1,2);if(!draft)tolerance=previewRefinement(false,pixelsPerUnit)!.tolerance;setBusy(true);const job=queue.enqueue({id,model,resolution,draft,streamSurface:!draft,pixelsPerUnit,previewDetail:!draft});if(job)dispatch(job);
   };
   let detailTimer:ReturnType<typeof setTimeout>|undefined;
@@ -194,14 +198,14 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    if(surface.hasPointerCapture(event.pointerId))surface.releasePointerCapture(event.pointerId);invalidate();scheduleDetail();
   };
   const cancel=()=>{clearHold();finishDrag();session.reset();mouse=undefined;touchOrigin=undefined;blockedTouchSequence=false;invalidate()};
-  const visibility=()=>{if(document.hidden){cancel();queue.pause();cancelAnimationFrame(frameId);cancelAnimationFrame(continuation);frameId=0;continuation=0;needsDraw=false}else{const job=queue.resume();if(job)dispatch(job);invalidate()}};
+  const visibility=()=>{if(document.hidden){cancel();queue.pause();cancelAnimationFrame(frameId);window.clearTimeout(continuation);frameId=0;continuation=0;needsDraw=false}else{const job=queue.resume();if(job)dispatch(job);invalidate()}};
   const wheel=(event:WheelEvent)=>{event.preventDefault();zoom(Math.exp(-event.deltaY*.001));scheduleDetail()};
   const context=(event:Event)=>event.preventDefault();
   surface.addEventListener('pointerdown',down);surface.addEventListener('pointermove',move);surface.addEventListener('pointerup',up);surface.addEventListener('pointercancel',up);surface.addEventListener('lostpointercapture',up);surface.addEventListener('wheel',wheel,{passive:false});surface.addEventListener('contextmenu',context);document.addEventListener('visibilitychange',visibility);window.addEventListener('blur',cancel);
   const observer=new ResizeObserver(resize);observer.observe(el);resize();
   try{worker=new Worker(new URL('../../lib/form-worker.ts',import.meta.url),{type:'module'});worker.onmessage=event=>{const job=queue.current;if(job&&job.id===event.data.id){if(event.data.stage==='surface')showSurface(job,event.data.mesh);else complete(job,event.data.mesh,event.data.error,event.data.milliseconds)}};worker.onerror=()=>{worker?.terminate();worker=undefined;const job=queue.restart();if(job)dispatch(job)}}catch{worker=undefined}
   runtime.current={submit,invalidate,fit,capture:()=>surface.toDataURL('image/png'),section,validateInteraction};
-  return()=>{disposed=true;runtime.current=null;if(detailTimer)clearTimeout(detailTimer);queue.dispose();fallback?.abort();sectionTask?.abort();worker?.terminate();cancel();observer.disconnect();cancelAnimationFrame(frameId);cancelAnimationFrame(continuation);surface.removeEventListener('pointerdown',down);surface.removeEventListener('pointermove',move);surface.removeEventListener('pointerup',up);surface.removeEventListener('pointercancel',up);surface.removeEventListener('lostpointercapture',up);surface.removeEventListener('wheel',wheel);surface.removeEventListener('contextmenu',context);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('blur',cancel)};
+  return()=>{disposed=true;runtime.current=null;if(detailTimer)clearTimeout(detailTimer);queue.dispose();fallback?.abort();sectionTask?.abort();worker?.terminate();cancel();observer.disconnect();cancelAnimationFrame(frameId);window.clearTimeout(continuation);surface.removeEventListener('pointerdown',down);surface.removeEventListener('pointermove',move);surface.removeEventListener('pointerup',up);surface.removeEventListener('pointercancel',up);surface.removeEventListener('lostpointercapture',up);surface.removeEventListener('wheel',wheel);surface.removeEventListener('contextmenu',context);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('blur',cancel)};
  },[]);
  const geometryKey=JSON.stringify(withoutRipples(props.model));
  useEffect(()=>{

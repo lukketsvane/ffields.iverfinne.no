@@ -5,8 +5,8 @@ uniform tetrahedral grid. The camera lens plate therefore gained a visibly
 stepped rim despite accurate vertex roots. Software previews also capped
 settled sampling at 96, and a slow draft could leave later settled work at 64.
 
-Both viewports now use one shared settled policy: 128–136 grid resolution on
-coarse-pointer devices, 160–164 elsewhere, followed by up to three conforming
+Both viewports now use one shared settled policy: 128–136 grid resolution in
+the mobile layout, 160–164 elsewhere, followed by up to three conforming
 surface-refinement passes (.04 field residual target, 350,000 triangle budget).
 Project loads and committed changes request that fine policy immediately.
 Continuous geometry edits alone use cheap drafts; after 160 ms without a new
@@ -32,6 +32,14 @@ sampling request, refinement target and engine version. Reload can restore it
 while an obsolete calculation is cancelled; draft/intermediate frames are not
 cached. Storage failure never blocks ordinary evaluation. WebGL uses device
 pixel ratio up to 3 when settled; the software fallback uses up to 2.
+
+The software fallback rasterizes all projected faces into a typed depth buffer
+with interpolated vertex lighting and four subpixel samples. It publishes one
+complete image instead of allocating a Canvas gradient and fill/stroke path for
+each fine face. This removes the triangle-edge grid pattern and the expensive
+native drawing loop without simplifying the mesh. Cooperative chunks keep
+input responsive. Resizing retains the previous complete image while the new
+frame is rendered.
 
 Interactive drafts keep their previous adaptive budget and four-pass edge roots.
 New geometry and camera presets also preempt an obsolete partially painted

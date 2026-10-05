@@ -43,8 +43,22 @@ changes. Export always evaluates the authored fields. Prepared field samplers
 remove repeated component ownership scans without changing sampled geometry
 or the existing shading calculation.
 
+The software renderer uses a depth-buffer rasterizer with smooth vertex light
+and subpixel antialiasing. Every projected face is tested; display sampling
+does not change the model or export mesh. One pixel buffer replaces hundreds
+of thousands of native gradient/path/fill/stroke calls. Resizing retains the
+previous complete image until the replacement frame is ready.
+
 Regression coverage uses actual rendered JSX, the real worker protocol, exact
 compiled-field equivalence, the current two-solid camera, cache validation,
 precision retention, cancellation and stage promotion. Browser checks exercise
 mobile widths, panel transitions, numeric dismissal, undo, completed painting
 and persistence. They do not substitute for physical phone GPU measurements.
+
+Verified in the responsive browser: the normal editor is 94 px high, the dock
+48 px, and the minimized strip 50 px including its border. At 320 × 568 there
+is no horizontal overflow; expanded details scroll within 32% of the height.
+Native quick controls use 16 px fonts and 44 px hit areas. Changing the lens
+plate Z value from 17.7 to 35.7 and pressing Minimize commits all four members;
+one Undo restores all four while leaving the body unchanged. Front view closes
+its tray. These checks exercise actual UI actions, not synthetic state writes.
