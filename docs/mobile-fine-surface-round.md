@@ -6,6 +6,8 @@ Membership, STL export, operations, the range slider and advanced tools remain
 available under Tool details. Minimize keeps the canvas grip available. View,
 camera, fit and ripple commands share one tray that closes after a choice.
 Project templates open on the clear canvas. Only one panel can be active.
+New projects fit the first complete fine surface immediately, while refinement
+continues. Ordinary edits keep the current camera framing.
 Portrait details have a bounded height; landscape uses one side strip. Keyboard
 clearance also accounts for Safari's visual viewport offset.
 

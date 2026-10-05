@@ -16,7 +16,7 @@ import {softwareRasterSteps} from '@/lib/software-raster';
 import type {SoftwareCamera,SoftwareFrame} from '@/lib/software-projection';
 import type {ViewportRef,ViewMode} from './viewport';
 
-export type SoftwareViewportProps={model:FormModel;view:ViewMode;selected:string;handles:boolean;section:number;components:boolean;wireframe:boolean;appearance:Appearance;editing:boolean;playing:boolean;canvasColor:string|null;transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';onTransform?:(id:string,patch:DirectTransformPatch)=>void;onSelect:(id:string,inspect?:boolean)=>void;onDrag:(id:string,x:number,y:number,z:number)=>void;onStart:()=>void;onEnd:()=>void;onUndo:()=>void;onMetrics:(mesh:MeshData)=>void};
+export type SoftwareViewportProps={model:FormModel;view:ViewMode;selected:string;handles:boolean;section:number;components:boolean;wireframe:boolean;appearance:Appearance;editing:boolean;playing:boolean;canvasColor:string|null;transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';onTransform?:(id:string,patch:DirectTransformPatch)=>void;onSelect:(id:string,inspect?:boolean)=>void;onDrag:(id:string,x:number,y:number,z:number)=>void;onStart:()=>void;onEnd:()=>void;onUndo:()=>void;onSurfaceReady?:()=>void;onMetrics:(mesh:MeshData)=>void};
 type Job={id:number;model:FormModel;resolution:number;draft:boolean;streamSurface:boolean;pixelsPerUnit:number;previewDetail:boolean};
 type Projection=ReturnType<typeof projectSoftwareMesh>;
 type Runtime={submit:(model:FormModel,draft:boolean,newRevision:boolean)=>void;scheduled?:ScheduledPreview;invalidate:()=>void;fit:(view?:'front'|'top'|'perspective')=>void;capture:()=>string;section:()=>void;validateInteraction:()=>void};
@@ -108,7 +108,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   const complete=(job:Job,mesh?:MeshData,message?:string,milliseconds?:number)=>{
    const result=queue.finish(job.id);
    if(result.accept&&!disposed){
-    if(mesh){displayStage=job.draft?'editing':'ready';el.dataset.previewStage='painting';el.dataset.previewResolution=String(mesh.sampling?.resolution??Math.max(0,...(mesh.components??[]).map(c=>c.sampling?.resolution??0)));el.dataset.previewTriangles=String(mesh.indices.length/3);data=mesh;dataIsDraft=job.draft;previous={resolution:job.resolution,milliseconds:milliseconds??0};if(!fitted)fit();if(!job.draft){latest.current.onMetrics(mesh);void putCachedPreview(cacheKey(job),{mesh})}setError('');preemptSurface()}
+    if(mesh){displayStage=job.draft?'editing':'ready';el.dataset.previewStage='painting';el.dataset.previewResolution=String(mesh.sampling?.resolution??Math.max(0,...(mesh.components??[]).map(c=>c.sampling?.resolution??0)));el.dataset.previewTriangles=String(mesh.indices.length/3);data=mesh;dataIsDraft=job.draft;previous={resolution:job.resolution,milliseconds:milliseconds??0};if(!fitted)fit();if(!job.draft){latest.current.onSurfaceReady?.();latest.current.onMetrics(mesh);void putCachedPreview(cacheKey(job),{mesh})}setError('');preemptSurface()}
     else if(message)setError('The surface could not be evaluated. Try a smaller influence.');
     setBusy(!!mesh||job.draft);
    }
@@ -116,7 +116,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   };
   const showSurface=(job:Job,mesh:MeshData)=>{
    if(disposed||job.draft||queue.current?.id!==job.id||queue.latestId!==job.id)return;
-   displayStage='refining';el.dataset.previewStage='painting';el.dataset.previewResolution=String(mesh.sampling?.resolution??Math.max(0,...(mesh.components??[]).map(c=>c.sampling?.resolution??0)));el.dataset.previewTriangles=String(mesh.indices.length/3);data=mesh;dataIsDraft=false;if(!fitted)fit();setError('');setBusy(true);preemptSurface();
+   displayStage='refining';el.dataset.previewStage='painting';el.dataset.previewResolution=String(mesh.sampling?.resolution??Math.max(0,...(mesh.components??[]).map(c=>c.sampling?.resolution??0)));el.dataset.previewTriangles=String(mesh.indices.length/3);data=mesh;dataIsDraft=false;if(!fitted)fit();latest.current.onSurfaceReady?.();setError('');setBusy(true);preemptSurface();
   };
   const cacheKey=(job:Job)=>previewCacheKey(JSON.stringify(job.model),job.resolution,previewRefinement(false,job.pixelsPerUnit)!.tolerance);
   const dispatch=(job:Job)=>{
