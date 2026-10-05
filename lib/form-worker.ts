@@ -1,6 +1,8 @@
-import {generateMesh,generateMeshAsync,binarySTL,validateModel} from './form-engine';
+import {generateMeshAsync,binarySTL,validateModel} from './form-engine';
 import {auditExportMesh} from './component-fit';
 import {previewAmbientOcclusion} from './preview-shading';
+import {generateExportMesh} from './export-progress';
+import type {ExportMeshProgress} from './export-progress';
 
 const previews=new Map<number,AbortController>();
 self.onmessage=async(event)=>{
@@ -12,9 +14,13 @@ self.onmessage=async(event)=>{
  try{
   const model=validateModel(data.model);
   if(data.task==='stl'||data.task==='audit'){
-   const mesh=generateMesh(model,data.resolution,data.refinement),{audit,componentFit}=auditExportMesh(model,mesh);
+   const progress=(value:ExportMeshProgress)=>self.postMessage({id,progress:value});
+   const mesh=generateExportMesh(model,data.resolution,data.refinement,progress);
+   progress({stage:'checking'});
+   const {audit,componentFit}=auditExportMesh(model,mesh);
    const check={audit,componentFit,refinement:mesh.refinement,sampling:mesh.sampling,milliseconds:performance.now()-started};
    if(data.task==='audit'){self.postMessage({id,check});return}
+   progress({stage:'writing'});
    const stl=binarySTL(mesh);self.postMessage({id,stl,check},{transfer:[stl]});return;
   }
   controller=new AbortController();previews.get(id)?.abort();previews.set(id,controller);

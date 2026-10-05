@@ -46,6 +46,16 @@ export function softwarePlaneDelta(camera:SoftwareCamera,dx:number,dy:number):Po
  const {right,up}=softwareBasis(camera),x=dx/camera.scale,y=-dy/camera.scale;
  return {x:right.x*x+up.x*y,y:right.y*x+up.y*y,z:right.z*x+up.z*y};
 }
+/** A front-to-back orthographic ray for the current camera. Its origin lies
+ * ahead of every model-bound corner, so no previous display mesh is needed. */
+export function softwareCameraRay(camera:SoftwareCamera,frame:SoftwareFrame,x:number,y:number,bounds:readonly number[]):{origin:Point3;direction:Point3}|undefined{
+ if(bounds.length!==6||bounds.some(v=>!Number.isFinite(v))||[x,y,frame.width,frame.height,camera.scale,camera.yaw,camera.pitch,camera.center.x,camera.center.y,camera.center.z].some(v=>!Number.isFinite(v))||camera.scale<=0||frame.width<=0||frame.height<=0)return undefined;
+ const {forward}=softwareBasis(camera),offset=softwarePlaneDelta(camera,x-frame.width/2,y-frame.height/2);
+ let depth=-Infinity;
+ for(let bits=0;bits<8;bits++)depth=Math.max(depth,(bounds[bits&1?3:0]-camera.center.x)*forward.x+(bounds[bits&2?4:1]-camera.center.y)*forward.y+(bounds[bits&4?5:2]-camera.center.z)*forward.z);
+ depth+=1;
+ return {origin:{x:camera.center.x+offset.x+forward.x*depth,y:camera.center.y+offset.y+forward.y*depth,z:camera.center.z+offset.z+forward.z*depth},direction:{x:-forward.x,y:-forward.y,z:-forward.z}};
+}
 export function fitSoftwareCamera(camera:SoftwareCamera,bounds:readonly number[],frame:SoftwareFrame):SoftwareCamera{
  if(bounds.length!==6||bounds.some(v=>!Number.isFinite(v)))return camera;
  const center={x:(bounds[0]+bounds[3])/2,y:(bounds[1]+bounds[4])/2,z:(bounds[2]+bounds[5])/2},at={...camera,center,scale:1};

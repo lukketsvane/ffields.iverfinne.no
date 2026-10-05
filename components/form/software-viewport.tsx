@@ -3,12 +3,13 @@ import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {clamp,cloneModel,generateMeshAsync,modelBounds,sectionContoursAsync,withoutRipples} from '@/lib/form-engine';
 import type {FormModel,MeshData,SectionContours} from '@/lib/form-engine';
 import {LatestPreviewScheduler} from '@/lib/preview-scheduler';
-import {selectedHandle,projectedHandleHit,pickShapeAtPoint,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '@/lib/direct-manipulation';
+import {selectedHandle,projectedHandleHit,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '@/lib/direct-manipulation';
+import {pickCurrentSurface} from '@/lib/implicit-picking';
 import type {DirectHandle,DirectTransformMode,DirectTransformPatch} from '@/lib/direct-manipulation';
 import {TouchSession} from '@/lib/touch-session';
 import {PALETTES} from '@/lib/appearance';
 import type {Appearance} from '@/lib/appearance';
-import {fitSoftwareCamera,pickSoftwareSurface,projectSoftwareMesh,projectSoftwarePoint,softwarePlaneDelta,softwareView,softwareTriangleGradient,softwarePreviewResolution,softwareInteractionShouldCancel} from '@/lib/software-projection';
+import {fitSoftwareCamera,softwareCameraRay,projectSoftwareMesh,projectSoftwarePoint,softwarePlaneDelta,softwareView,softwareTriangleGradient,softwarePreviewResolution,softwareInteractionShouldCancel} from '@/lib/software-projection';
 import type {SoftwareCamera,SoftwareFrame} from '@/lib/software-projection';
 import type {ViewportRef,ViewMode} from './viewport';
 
@@ -31,7 +32,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   const back=document.createElement('canvas'),front=document.createElement('canvas'),paintContext=back.getContext('2d'),frontContext=front.getContext('2d');if(!paintContext||!frontContext)return;
   const paintCtx:CanvasRenderingContext2D=paintContext,frontCtx:CanvasRenderingContext2D=frontContext;
   let disposed=false,frameId=0,continuation=0,revision=0,needsDraw=false,paintingDraft=false,interactionEditing=false,blockedTouchSequence=false,fitted=false,worker:Worker|undefined,fallback:AbortController|undefined,sectionTask:AbortController|undefined;
-  let data:MeshData|undefined,draftData:MeshData|undefined,projection:Projection|undefined,projectionMesh:MeshData|undefined,displayProjection:Projection|undefined,displayMesh:MeshData|undefined,contours:SectionContours|undefined,previous:{resolution:number;milliseconds:number}|undefined;
+  let data:MeshData|undefined,draftData:MeshData|undefined,projection:Projection|undefined,projectionMesh:MeshData|undefined,contours:SectionContours|undefined,previous:{resolution:number;milliseconds:number}|undefined;
   let camera:SoftwareCamera={center:{x:0,y:0,z:0},yaw:.62,pitch:.34,scale:2},size:SoftwareFrame={width:Math.max(1,el.clientWidth),height:Math.max(1,el.clientHeight)};
   let request=0,sectionRequest=0,sectionKey='',projectKey='';
   const queue=new LatestPreviewScheduler<Job>(),session=new TouchSession();
@@ -58,7 +59,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    ctx.restore();
   };
   const refreshOverlay=()=>{const ratio=Math.min(window.devicePixelRatio||1,1.5);ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,surface.width,surface.height);ctx.drawImage(front,0,0);ctx.setTransform(ratio,0,0,ratio,0,0);drawGrip()};
-  const publish=(mesh?:MeshData,projected?:Projection)=>{displayMesh=mesh;displayProjection=projected;frontCtx.setTransform(1,0,0,1,0,0);frontCtx.clearRect(0,0,front.width,front.height);frontCtx.drawImage(back,0,0);refreshOverlay()};
+  const publish=()=>{frontCtx.setTransform(1,0,0,1,0,0);frontCtx.clearRect(0,0,front.width,front.height);frontCtx.drawImage(back,0,0);refreshOverlay()};
   function draw(){
    frameId=0;if(disposed||document.hidden)return;
    const p=latest.current,ratio=Math.min(window.devicePixelRatio||1,1.5),cam=activeCamera(),token=revision;
@@ -89,7 +90,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
      }
      paintCtx.fillStyle=fill;paintCtx.strokeStyle=p.wireframe?PALETTES[p.appearance].grid:fill;if(!p.wireframe)paintCtx.fill();paintCtx.stroke();
     }
-    if(cursor<current.triangles.length){refreshOverlay();continuation=requestAnimationFrame(()=>paint(cursor))}else{continuation=0;publish(mesh,current);if(needsDraw){needsDraw=false;invalidate()}}
+    if(cursor<current.triangles.length){refreshOverlay();continuation=requestAnimationFrame(()=>paint(cursor))}else{continuation=0;publish();if(needsDraw){needsDraw=false;invalidate()}}
    };
    paint(0);
   }
@@ -145,9 +146,10 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    if(inspect&&(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement))document.activeElement.blur();
    const p=latest.current,h=selectedHandle(p.model,p.selected);
    const mode=h?gripMode(h):undefined;if(h&&mode&&p.handles&&p.view!=='silhouette'&&projectedHandleHit({x,y},gripPoint(h,mode).at,24)){p.onSelect(h.id,inspect);return}
-   if(p.view==='section'||!displayMesh||!displayProjection)return;
-   const at=pickSoftwareSurface(displayMesh,displayProjection.points,displayProjection.triangles,x,y);
-   if(at)p.onSelect(pickShapeAtPoint(p.model,at,Math.max(2,...(displayMesh.sampling?.maxSpacing??[2])))??'body',inspect);
+   if(p.view==='section')return;
+   const ray=softwareCameraRay(activeCamera(),size,x,y,modelBounds(p.model,false));
+   const hit=ray?pickCurrentSurface(p.model,ray):undefined;
+   if(hit)p.onSelect(hit.shapeId??(p.model.lattice?.enabled?'lattice':'body'),inspect);
   };
   const pan=(dx:number,dy:number)=>{const delta=softwarePlaneDelta(activeCamera(),dx,dy);camera={...camera,center:{x:camera.center.x-delta.x,y:camera.center.y-delta.y,z:camera.center.z-delta.z}};invalidate()};
   const orbit=(dx:number,dy:number)=>{if(latest.current.view==='section'||latest.current.view==='silhouette'){pan(dx,dy);return}camera={...camera,yaw:camera.yaw-dx*.006,pitch:clamp(camera.pitch+dy*.006,-1.48,1.48)};invalidate()};

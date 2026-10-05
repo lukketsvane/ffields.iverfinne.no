@@ -2,7 +2,7 @@ import type {FormModel} from './form-engine.ts';
 import {evaluateBase,withoutRipples} from './form-engine.ts';
 import {resolveAttachments} from './attachments.ts';
 import {compileShape,isValidSweepPath,SHAPE_LIMITS} from './shapes.ts';
-import type {FormShape} from './shapes.ts';
+import type {FormShape,ShapeEvaluator} from './shapes.ts';
 import type {PlacedAsset} from './assets.ts';
 import {scaleSweep,sweepScaleLimits} from './quick-modelling.ts';
 import {resolveComponentClearances} from './component-clearance.ts';
@@ -126,14 +126,20 @@ export function projectedHandleHit(pointer:ScreenPoint,projected:ScreenPoint,rad
  * handles smooth blends and coincident primitives, and follows the same
  * transforms, attachment resolution, shell and lattice as preview meshing.
  * This is a local selection heuristic, not an exact distance/analysis query.
- * Ripples are display displacement; the mesh hit is in the static mesh frame. */
-export function pickShapeAtPoint(model:FormModel,point:Point3,tolerance=2):string|undefined {
+ * Ripples are display displacement; the mesh hit is in the static mesh frame.
+ * An optional budget guard can stop before each compilation or composed field
+ * evaluation. Without that guard existing unbudgeted callers are unchanged. */
+export type ShapePickOptions={withinBudget?:(stage:'compile'|'evaluate')=>boolean};
+export function pickShapeAtPoint(model:FormModel,point:Point3,tolerance=2,options:ShapePickOptions={}):string|undefined {
  if(!Number.isFinite(point.x)||!Number.isFinite(point.y)||!Number.isFinite(point.z)||!Number.isFinite(tolerance)||tolerance<0)return undefined;
  const authored=new Set((model.shapes??[]).filter(s=>s.enabled).map(s=>s.id));
  if(!authored.size)return undefined;
+ if(options.withinBudget&&!options.withinBudget('compile'))return undefined;
  const geometry=resolveAttachments(withoutRipples(model)),shapes=geometry.shapes??[];
- const compiled=shapes.map(s=>s.enabled?compileShape(s):()=>Infinity);
- const field=()=>evaluateBase(geometry,point.x,point.y,point.z,compiled);
+ const compiled:ShapeEvaluator[]=[];
+ for(const shape of shapes){if(options.withinBudget&&!options.withinBudget('compile'))return undefined;compiled.push(shape.enabled?compileShape(shape):()=>Infinity);}
+ let aborted=false;
+ const field=()=>{if(options.withinBudget&&!options.withinBudget('evaluate')){aborted=true;return NaN;}return evaluateBase(geometry,point.x,point.y,point.z,compiled);};
  const surface=field();
  if(!Number.isFinite(surface)||Math.abs(surface)>tolerance)return undefined;
  const step=.25;
@@ -150,8 +156,10 @@ export function pickShapeAtPoint(model:FormModel,point:Point3,tolerance=2):strin
    return value+bias;
   };
   compiled[i]=shifted(step);const plus=field();
+  if(aborted){compiled[i]=exact;return undefined;}
   compiled[i]=shifted(-step);const minus=field();
   compiled[i]=exact;
+  if(aborted)return undefined;
   const sensitivity=Math.max(Math.abs(plus-surface),Math.abs(minus-surface))/step;
   if(!Number.isFinite(sensitivity)||sensitivity<.035)continue;
   const distance=Math.abs(rawDistance);

@@ -3,11 +3,13 @@ import type {MeshAudit} from '@/lib/mesh-audit';
 import type {MeshRefinementStats} from '@/lib/mesh-refinement';
 import type {MeshSamplingStats} from '@/lib/mesh-sampling';
 import type {ComponentFitAudit} from '@/lib/component-fit';
+import {exportMeshStageLabel} from '@/lib/export-progress';
+import type {ExportMeshProgress} from '@/lib/export-progress';
 import styles from './mesh-inspector.module.css';
 
 export type MeshCheckResult={audit:MeshAudit;refinement?:MeshRefinementStats;sampling?:MeshSamplingStats;componentFit?:ComponentFitAudit;milliseconds:number};
-type Props={fileURL?:string;refine:boolean;onRefine:(value:boolean)=>void;result:MeshCheckResult|null;busy:boolean;exporting:boolean;onCheck:()=>void;onCancel:()=>void;onExport:()=>void;error:string;onInspectComponent?:(id:string)=>void};
-export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,onCheck,onCancel,onExport,error,onInspectComponent}:Props){
+type Props={fileURL?:string;refine:boolean;onRefine:(value:boolean)=>void;result:MeshCheckResult|null;busy:boolean;exporting:boolean;progress?:ExportMeshProgress|null;onCheck:()=>void;onCancel:()=>void;onCancelExport?:()=>void;onExport:()=>void;error:string;onInspectComponent?:(id:string)=>void};
+export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,progress,onCheck,onCancel,onCancelExport,onExport,error,onInspectComponent}:Props){
  const audit=result?.audit,stats=result?.refinement,sampling=result?.sampling,componentFit=result?.componentFit;
  const hasComponentChecks=!!componentFit?.components.length;
  const clean=audit&&audit.triangles>0&&audit.finite&&audit.invalidIndices===0&&audit.degenerateTriangles===0&&audit.boundaryEdges===0&&audit.nonManifoldEdges===0&&audit.inconsistentWindingEdges===0;
@@ -19,8 +21,10 @@ export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,onC
   </div>
   <p className={styles.help}>{refine?'Adds triangles where curved surfaces need more detail. Small corners may still need finer sampling.':'Uses the full export grid and aligns sampling to eligible flat box faces. Refined adds local surface detail.'}</p>
   <div className={styles.actions}><button type="button" disabled={busy||exporting} onClick={onCheck}>{busy?'Checking…':'Check export mesh'}</button><button type="button" disabled={busy||exporting} onClick={onExport}>{exporting?'Exporting…':'Export STL'}</button></div>
+  {(busy||exporting)&&<p className={styles.progress} role="status">{progress?exportMeshStageLabel(progress.stage):exporting?'Preparing export':'Preparing mesh check'}</p>}
   {fileURL&&<a className={styles.download} href={fileURL} download="form-study-mm.stl">Download prepared STL</a>}
   {busy&&<button type="button" className={styles.cancel} onClick={onCancel}>Cancel check</button>}
+  {exporting&&onCancelExport&&<button type="button" className={styles.cancel} onClick={onCancelExport}>Cancel export</button>}
   {error&&<p className={styles.error} role="alert">{error}</p>}
   {audit&&<div className={styles.report} aria-live="polite">
    <div className={styles.result}>{clean?'Closed, consistent edges':audit.triangles?'Mesh needs review':'No solid in this mesh'}</div>
@@ -44,7 +48,7 @@ export function MeshInspector({fileURL,refine,onRefine,result,busy,exporting,onC
    {sampling&&<p className={styles.help}>Grid spacing describes sampling, not fit tolerance. Thin walls and small openings need geometry checks.</p>}
    <p className={styles.help}>{hasComponentChecks?'Triangle connections and component interference are checked separately. Surface self-intersections and material strength need further checks.':'Measurements describe the captured export frame. Checks triangle connections; intersections and material strength need separate checks.'}</p>
   </div>}
-  {!audit&&!busy&&!error&&<p className={styles.help}>Check the current construction before exporting. Editing the model clears this result.</p>}
+  {!audit&&!busy&&!exporting&&!error&&<p className={styles.help}>Check the current construction before exporting. Editing the model clears this result.</p>}
  </section>;
 }
 
