@@ -2,6 +2,7 @@ import {cloneModel,DEFAULT_MODEL} from './form-engine.ts';
 import type {FormModel} from './form-engine.ts';
 import type {FormShape,ShapeKind,ShapeOperation} from './shapes.ts';
 import type {LatticeSettings} from './lattice.ts';
+import {createCameraPodStudy} from './camera-pod-study.ts';
 
 export type ProjectTemplate={id:string;name:string;category:string;description:string;model:FormModel};
 
@@ -101,6 +102,7 @@ function spiral():FormModel {
 }
 
 export const PROJECT_TEMPLATES:readonly ProjectTemplate[]=[
+ {id:'camera-pod',name:'Colani camera',category:'Camera form',description:'An upright asymmetric body with flowing grip valleys, a low lens plate and an integrated lamp seat.',model:createCameraPodStudy()},
  {id:'counterflow',name:'Counterflow',category:'Heat exchange',description:'Four ports. Graded gyroid core. Open vessel section.',model:counterflow()},
  {id:'vortex',name:'Vortex',category:'Rotational geometry',description:'Cellular swept vanes connect a raised hub and continuous rim.',model:vortex()},
  {id:'halo',name:'Halo',category:'Cellular liner',description:'A continuous dome around a deep honeycomb liner.',model:halo()},
