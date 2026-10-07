@@ -3,6 +3,8 @@ import {previewDetailResolution} from './preview-scheduler.ts';
 import assetCatalog from './asset-catalog.json' with {type:'json'};
 import type {PlacedAsset} from './assets';
 import {refineMeshSurface,refineMeshSurfaceAsync} from './mesh-refinement.ts';
+import {sharpenCreasesAsync,splitSeamNormalsAsync,seamLock} from './crease-sharpening.ts';
+import type {CreaseMeshData} from './crease-sharpening.ts';
 import {drainSteps} from './cooperative-task.ts';
 import {createMeshSamplingGrid} from './mesh-sampling.ts';
 import type {MeshSamplingOptions,MeshSamplingStats} from './mesh-sampling.ts';
@@ -252,6 +254,9 @@ export type AsyncMeshOptions={
  onSurface?:(mesh:MeshData)=>void;
  /** Viewport-only bounded sampling retry after severely limited refinement. */
  previewDetail?:boolean;
+ /** Viewport-only: resolve hard CSG seams and split their normals. Exports
+  * never set this, so their welded meshes and bytes are unchanged. */
+ creases?:boolean;
 };
 const yieldMeshTask=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,0));
 /** Cooperative fallback for viewport previews when module workers are blocked.
@@ -259,31 +264,41 @@ const yieldMeshTask=():Promise<void>=>new Promise(resolve=>setTimeout(resolve,0)
  * requesting a draft caps only edge-root iterations. Refinement is cooperative
  * too, preserving the complete authoritative algorithm and accepted patches. */
 export async function generateMeshAsync(m:FormModel,resolution=52,refinement?:MeshRefinementOptions,samplingOptions?:MeshSamplingOptions,options:AsyncMeshOptions={}):Promise<MeshData> {
+ const creases=options.creases===true,show=(mesh:CreaseMeshData)=>creases?splitSeamNormalsAsync(mesh,options):Promise.resolve(mesh);
  if(hasSolidComponents(m)){
-  const parts=solidComponents(m),meshes:MeshData[]=[],partOptions={...options,onSurface:undefined};
+  const parts=solidComponents(m),meshes:CreaseMeshData[]=[],partOptions={...options,onSurface:undefined};
+  const frame=async(list:CreaseMeshData[])=>combineComponentMeshes(parts,await Promise.all(list.map(show)));
   // Complete the fine sampling of every solid before spending additional
   // time on refinement. A streamed frame never temporarily loses a part.
-  for(const part of parts)meshes.push(await generateMeshAsync(part.model,resolution,undefined,samplingOptions,partOptions));
-  if(!refinement)return combineComponentMeshes(parts,meshes);
-  options.onSurface?.(combineComponentMeshes(parts,meshes));
+  for(const part of parts){const surface=await generateMeshAsync(part.model,resolution,undefined,samplingOptions,{...partOptions,creases:false});meshes.push(creases?await sharpenModelMeshAsync(part.model,surface,options):surface);}
+  if(!refinement)return frame(meshes);
+  options.onSurface?.(await frame(meshes));
   for(let i=0;i<parts.length;i++)meshes[i]=await refineModelMeshAsync(parts[i].model,meshes[i],refinement,partOptions);
   if(options.previewDetail)for(let i=0;i<parts.length;i++){
    const detail=previewDetailResolution(meshes[i],resolution);if(!detail)continue;
-   options.onSurface?.(combineComponentMeshes(parts,meshes));
-   meshes[i]=await generateMeshAsync(parts[i].model,detail,refinement,samplingOptions,{...partOptions,previewDetail:false,onSurface:options.onSurface?surface=>{const frame=meshes.slice();frame[i]=surface;options.onSurface?.(combineComponentMeshes(parts,frame));}:undefined});
+   const shown=await Promise.all(meshes.map(show));
+   options.onSurface?.(combineComponentMeshes(parts,shown));
+   meshes[i]=await generateMeshAsync(parts[i].model,detail,refinement,samplingOptions,{...partOptions,previewDetail:false,onSurface:options.onSurface?surface=>{const list=shown.slice();list[i]=surface;options.onSurface?.(combineComponentMeshes(parts,list));}:undefined});
   }
-  return combineComponentMeshes(parts,meshes);
+  return frame(meshes);
  }
- const mesh=await drainSteps(meshSteps(m,resolution,undefined,samplingOptions,options.draft?4:24),options);
- if(!refinement)return mesh;
- options.onSurface?.(mesh);
+ const surface=await drainSteps(meshSteps(m,resolution,undefined,samplingOptions,options.draft?4:24),options);
+ const mesh:CreaseMeshData=creases?await sharpenModelMeshAsync(m,surface,options):surface;
+ if(!refinement)return show(mesh);
+ options.onSurface?.(await show(mesh));
  const refined=await refineModelMeshAsync(m,mesh,refinement,options),detail=options.previewDetail?previewDetailResolution(refined,resolution):undefined;
- if(detail){options.onSurface?.(refined);return generateMeshAsync(m,detail,refinement,samplingOptions,{...options,previewDetail:false});}
- return refined;
+ if(detail){options.onSurface?.(await show(refined));return generateMeshAsync(m,detail,refinement,samplingOptions,{...options,previewDetail:false});}
+ return show(refined);
 }
-async function refineModelMeshAsync(m:FormModel,mesh:MeshData,refinement:MeshRefinementOptions,options:AsyncMeshOptions):Promise<MeshData>{
- const resolved=resolveAttachments(m),field=prepareModelField(resolved);
- return {...await refineMeshSurfaceAsync(mesh,field,refinement,options),sampling:mesh.sampling};
+async function refineModelMeshAsync(m:FormModel,mesh:CreaseMeshData,refinement:MeshRefinementOptions,options:AsyncMeshOptions):Promise<CreaseMeshData>{
+ const resolved=resolveAttachments(m),field=prepareModelField(resolved),lockedVertices=seamLock(mesh);
+ const refined=await refineMeshSurfaceAsync(mesh,field,lockedVertices?{...refinement,lockedVertices}:refinement,options);
+ return {...refined,sampling:mesh.sampling,...(mesh.seams?{seams:mesh.seams,creases:mesh.creases}:{})};
+}
+async function sharpenModelMeshAsync(m:FormModel,mesh:MeshData,options:AsyncMeshOptions):Promise<CreaseMeshData>{
+ // A draft follows a moving finger, so its seams get a bounded share of the work.
+ const maxEdges=options.draft?Math.max(300,Math.round(mesh.indices.length/3*.02)):undefined;
+ return sharpenCreasesAsync(mesh,prepareModelField(resolveAttachments(m)),maxEdges?{maxEdges}:{},options);
 }
 function* collapsedFaceSteps(mesh:MeshData):Generator<void,boolean,void>{
  const p=mesh.positions,indices=mesh.indices;

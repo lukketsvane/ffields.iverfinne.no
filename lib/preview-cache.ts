@@ -2,7 +2,7 @@ import type {MeshData} from './form-engine.ts';
 
 export type CachedPreview={mesh:MeshData;ao?:Float32Array};
 // A display cache only: authored fields and export geometry remain authoritative.
-const VERSION='fine-surface-2026-10-05-v1',MAX_BYTES=24*1024*1024;
+const VERSION='crisp-seams-2026-10-07-v1',MAX_BYTES=24*1024*1024;
 let memory:{key:string;value:CachedPreview}|undefined;
 let connection:Promise<IDBDatabase|undefined>|undefined;
 

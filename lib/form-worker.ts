@@ -25,7 +25,8 @@ self.onmessage=async(event)=>{
    const stl=binarySTL(mesh);self.postMessage({id,stl,check},{transfer:[stl]});return;
   }
   controller=new AbortController();previews.get(id)?.abort();previews.set(id,controller);
-  const options={signal:controller.signal,budgetMs:8,draft:data.draft===true,previewDetail:data.previewDetail===true,...(data.streamSurface&&!data.draft?{onSurface:(mesh:import('./form-engine').MeshData)=>{
+  // Previews resolve hard CSG seams; exports above keep their welded meshes.
+  const options={signal:controller.signal,budgetMs:8,draft:data.draft===true,previewDetail:data.previewDetail===true,creases:true,...(data.streamSurface&&!data.draft?{onSurface:(mesh:import('./form-engine').MeshData)=>{
    // Clone this intermediate frame: refinement still owns these buffers.
    // The final result alone transfers ownership and releases the queue.
    if(!controller?.signal.aborted)self.postMessage({id,mesh,stage:'surface'});

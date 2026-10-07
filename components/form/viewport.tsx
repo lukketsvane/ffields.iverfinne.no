@@ -10,28 +10,30 @@ import {FormModel,MeshData,SectionContours,generateMeshAsync,sectionContoursAsyn
 import {previewResolution,LatestPreviewScheduler,previewRefinement,previewUpdateStage,previewNeedsSettle} from '@/lib/preview-scheduler';
 import {previewCacheKey,getCachedPreview,putCachedPreview} from '@/lib/preview-cache';
 import type {ScheduledPreview} from '@/lib/preview-scheduler';
-import {selectedHandle,projectedHandleHit,directGripOffset,directScaleFactor,directRotationDelta,directTransformPatch} from '@/lib/direct-manipulation';
+import {selectedHandle,projectedHandleHit,directGripOffset,directScaleFactor,directRotationDelta,directTransformPatch,composeDirectPatch,selectionFrame} from '@/lib/direct-manipulation';
 import {pickCurrentSurface} from '@/lib/implicit-picking';
 import type {DirectTransformMode,DirectTransformPatch} from '@/lib/direct-manipulation';
-import {shapeBounds} from '@/lib/shapes';
 import {Appearance,PALETTES} from '@/lib/appearance';
-import {TouchSession} from '@/lib/touch-session';
+import {GestureRecognizer,nearHull} from '@/lib/touch-gestures';
+import type {PairGesture,PairOwner} from '@/lib/touch-gestures';
 import {createRippleMaterial} from '@/lib/ripple-material';
 import {cameraParts} from './camera-parts';
 import {resizeWorkspaceProjection,syncOrthographicCamera} from '@/lib/workspace-camera';
 import {SoftwareViewport} from './software-viewport';
 export type ViewMode='solid'|'field'|'section'|'silhouette';
-export type ViewportRef={capture:()=>string|undefined;reset:()=>void;setView:(v:'front'|'top'|'perspective')=>void;phase:()=>number};
-type Props={model:FormModel;view:ViewMode;selected:string;handles:boolean;transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';section:number;components:boolean;wireframe:boolean;appearance:Appearance;editing:boolean;playing:boolean;canvasColor:string|null;onSelect:(id:string,inspect?:boolean)=>void;onDrag:(id:string,x:number,y:number,z:number)=>void;onTransform?:(id:string,patch:DirectTransformPatch)=>void;onStart:()=>void;onEnd:()=>void;onUndo:()=>void;onSurfaceReady?:()=>void;onMetrics:(mesh:MeshData)=>void};
+/** Where a placed part lands: the surface at the middle of the view, or the orbit target, with the visible height there. */
+export type ViewportFocus={x:number;y:number;z:number;surface:boolean;span:number;view:{x:number;y:number;z:number}};
+export type ViewportRef={capture:()=>string|undefined;reset:()=>void;setView:(v:'front'|'top'|'perspective')=>void;phase:()=>number;focus?:()=>ViewportFocus|undefined};
+type Props={model:FormModel;view:ViewMode;selected:string;handles:boolean;transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';section:number;components:boolean;wireframe:boolean;appearance:Appearance;editing:boolean;playing:boolean;canvasColor:string|null;onSelect:(id:string,inspect?:boolean)=>void;onDrag:(id:string,x:number,y:number,z:number)=>void;onTransform?:(id:string,patch:DirectTransformPatch)=>void;onStart:()=>void;onEnd:()=>void;onUndo:()=>void;onRedo?:()=>void;onDeselect?:()=>void;onSurfaceReady?:()=>void;onMetrics:(mesh:MeshData)=>void};
 type Job={id:number;model:FormModel;resolution:number;shading?:boolean;draft?:boolean;streamSurface?:boolean;pixelsPerUnit?:number;previewDetail?:boolean};
 type SectionJob={id:number;model:FormModel;resolution:number;z:number};
-type Runtime={renderer:THREE.WebGLRenderer;scene:THREE.Scene;camera:THREE.PerspectiveCamera;ortho:THREE.OrthographicCamera;controls:OrbitControls;body:THREE.Mesh;actors:THREE.Group;fields:THREE.Group;sectionGroup:THREE.Group;ground:THREE.Group;imports:THREE.Group;instances:Map<string,THREE.Group>;worker?:Worker;data?:MeshData;request:number;queue:LatestPreviewScheduler<Job>;scheduled?:ScheduledPreview;tolerance?:number;pixelScale:()=>number;previous?:{resolution:number;milliseconds:number};touching:boolean;dragging:boolean;apply:(data:MeshData,ao?:Float32Array,settled?:boolean,draft?:boolean)=>void;invalidate:()=>void;invalidateJob:(id:number)=>void;fit:(view?:'front'|'top'|'perspective')=>void;submit:(job:Job)=>void;quality:(active:boolean)=>void;phase:()=>number;syncRipple:()=>void;syncCamera:()=>void;syncSection:()=>void;validateInteraction:()=>void};
+type Runtime={renderer:THREE.WebGLRenderer;scene:THREE.Scene;camera:THREE.PerspectiveCamera;ortho:THREE.OrthographicCamera;controls:OrbitControls;body:THREE.Mesh;actors:THREE.Group;fields:THREE.Group;selection:THREE.Group;focus:()=>ViewportFocus|undefined;sectionGroup:THREE.Group;ground:THREE.Group;imports:THREE.Group;instances:Map<string,THREE.Group>;worker?:Worker;data?:MeshData;request:number;queue:LatestPreviewScheduler<Job>;scheduled?:ScheduledPreview;tolerance?:number;pixelScale:()=>number;previous?:{resolution:number;milliseconds:number};touching:boolean;dragging:boolean;apply:(data:MeshData,ao?:Float32Array,settled?:boolean,draft?:boolean)=>void;invalidate:()=>void;invalidateJob:(id:number)=>void;fit:(view?:'front'|'top'|'perspective')=>void;submit:(job:Job)=>void;quality:(active:boolean)=>void;phase:()=>number;syncRipple:()=>void;syncCamera:()=>void;syncSection:()=>void;validateInteraction:()=>void};
 const isFlat=(view:ViewMode)=>view==='section'||view==='silhouette';
 export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref){
  const mount=useRef<HTMLDivElement>(null),latest=useRef(props),runtime=useRef<Runtime|null>(null),software=useRef<ViewportRef>(null);latest.current=props;
  const [error,setError]=useState(''),[busy,setBusy]=useState(true),[assetRetry,setAssetRetry]=useState(0),[softwarePreview,setSoftwarePreview]=useState(false);
  useEffect(()=>{const retry=()=>setAssetRetry(n=>n+1);window.addEventListener('online',retry);return()=>window.removeEventListener('online',retry)},[]);
- useImperativeHandle(ref,()=>({capture:()=>{const r=runtime.current;if(!r)return software.current?.capture();r.syncRipple();r.syncCamera();r.renderer.render(r.scene,isFlat(latest.current.view)?r.ortho:r.camera);return r.renderer.domElement.toDataURL('image/png')},reset:()=>{if(runtime.current)runtime.current.fit();else software.current?.reset()},setView:v=>{if(runtime.current)runtime.current.fit(v);else software.current?.setView(v)},phase:()=>runtime.current?.phase()??software.current?.phase()??latest.current.model.influences.find(f=>f.kind==='wave')?.phase??0}),[]);
+ useImperativeHandle(ref,()=>({capture:()=>{const r=runtime.current;if(!r)return software.current?.capture();r.syncRipple();r.syncCamera();r.renderer.render(r.scene,isFlat(latest.current.view)?r.ortho:r.camera);return r.renderer.domElement.toDataURL('image/png')},reset:()=>{if(runtime.current)runtime.current.fit();else software.current?.reset()},setView:v=>{if(runtime.current)runtime.current.fit(v);else software.current?.setView(v)},phase:()=>runtime.current?.phase()??software.current?.phase()??latest.current.model.influences.find(f=>f.kind==='wave')?.phase??0,focus:()=>runtime.current?runtime.current.focus():software.current?.focus?.()}),[]);
  useEffect(()=>{
   const el=mount.current;if(!el)return;let renderer:THREE.WebGLRenderer;
   try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true})}catch{setSoftwarePreview(true);setBusy(false);return}
@@ -50,7 +52,7 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
   // Stored Phase remains an editable offset; other model edits never reset elapsed playback.
   const phase=()=>((latest.current.model.influences.find(f=>f.kind==='wave')?.phase??0)+(playing?(performance.now()-phaseStarted)*.045:0))%360;
   const syncRipple=()=>{if(latest.current.playing&&!playing)phaseStarted=performance.now();playing=latest.current.playing;updateRipple(latest.current.model,phase())};
-  const actors=new THREE.Group(),fields=new THREE.Group(),sectionGroup=new THREE.Group(),ground=new THREE.Group(),imports=new THREE.Group();scene.add(actors,fields,sectionGroup,ground,imports);
+  const actors=new THREE.Group(),fields=new THREE.Group(),selection=new THREE.Group(),sectionGroup=new THREE.Group(),ground=new THREE.Group(),imports=new THREE.Group();scene.add(actors,fields,selection,sectionGroup,ground,imports);
   let sectionLines:THREE.LineSegments<THREE.BufferGeometry,THREE.LineBasicMaterial>|undefined,sectionAppearance:Appearance|undefined,lastSectionFrame=-Infinity,sectionRequest=0,sectionKey='';
   let sectionWorker:Worker|undefined,sectionFallback:AbortController|undefined;
   const sectionQueue=new LatestPreviewScheduler<SectionJob>();
@@ -90,10 +92,10 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
   const queue=new LatestPreviewScheduler<Job>();let fallback:AbortController|undefined;
   const complete=(job:Job,mesh?:MeshData,error?:unknown,milliseconds?:number,ao?:Float32Array)=>{const result=queue.finish(job.id);if(result.accept&&!disposed){if(mesh){rt.previous={resolution:job.resolution,milliseconds:milliseconds??0};apply(mesh,ao,job.draft!==true,job.draft===true);if(!job.draft)void putCachedPreview(cacheKey(job),{mesh,...(ao?{ao}:{})})}else if(error){setError('The form could not be evaluated. Reduce an influence.');setBusy(false)}}if(result.next)dispatch(result.next)};
   const cacheKey=(job:Job)=>previewCacheKey(JSON.stringify(job.model),job.resolution,previewRefinement(false,job.pixelsPerUnit)!.tolerance);
-  const dispatch=(job:Job)=>{if(disposed)return;el.dataset.previewCached='false';if(!job.draft)void getCachedPreview(cacheKey(job)).then(cached=>{if(!cached||disposed||queue.current?.id!==job.id||queue.latestId!==job.id||JSON.stringify(withoutRipples(latest.current.model))!==JSON.stringify(job.model))return;el.dataset.previewCached='true';rt.worker?.postMessage({cancel:job.id});fallback?.abort();complete(job,cached.mesh,undefined,0,cached.ao)});if(rt.worker){rt.worker.postMessage(job);return}const controller=new AbortController();fallback=controller;const started=performance.now();generateMeshAsync(job.model,job.resolution,previewRefinement(job.draft===true,job.pixelsPerUnit),undefined,{signal:controller.signal,budgetMs:8,draft:job.draft,previewDetail:job.previewDetail,...(job.streamSurface?{onSurface:(mesh:MeshData)=>{if(queue.current?.id===job.id&&queue.latestId===job.id)apply(mesh,undefined,false)}}:{})}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:error)).finally(()=>{if(fallback===controller)fallback=undefined})};
+  const dispatch=(job:Job)=>{if(disposed)return;el.dataset.previewCached='false';if(!job.draft)void getCachedPreview(cacheKey(job)).then(cached=>{if(!cached||disposed||queue.current?.id!==job.id||queue.latestId!==job.id||JSON.stringify(withoutRipples(latest.current.model))!==JSON.stringify(job.model))return;el.dataset.previewCached='true';rt.worker?.postMessage({cancel:job.id});fallback?.abort();complete(job,cached.mesh,undefined,0,cached.ao)});if(rt.worker){rt.worker.postMessage(job);return}const controller=new AbortController();fallback=controller;const started=performance.now();generateMeshAsync(job.model,job.resolution,previewRefinement(job.draft===true,job.pixelsPerUnit),undefined,{signal:controller.signal,budgetMs:8,draft:job.draft,previewDetail:job.previewDetail,creases:true,...(job.streamSurface?{onSurface:(mesh:MeshData)=>{if(queue.current?.id===job.id&&queue.latestId===job.id)apply(mesh,undefined,false)}}:{})}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:error)).finally(()=>{if(fallback===controller)fallback=undefined})};
   const submit=(job:Job)=>{if(!job.draft)rt.tolerance=previewRefinement(false,job.pixelsPerUnit)!.tolerance;if(document.hidden)queue.pause();const next=queue.enqueue(job);if(next)dispatch(next)};
   const invalidateJob=(id:number)=>{const activeId=queue.current?.id;queue.invalidate(id);fallback?.abort();if(rt.worker&&activeId!==undefined)rt.worker.postMessage({cancel:activeId})};
-  const rt:Runtime={renderer,scene,camera,ortho,controls,body,actors,fields,sectionGroup,ground,imports,instances:new Map(),request:0,queue,pixelScale:()=>{if(!rt.data){const b=modelBounds(latest.current.model,false),longest=Math.max(b[3]-b[0],b[4]-b[1],b[5]-b[2]);return el.clientHeight/(longest*1.2)*renderRatio}return (isFlat(latest.current.view)?el.clientHeight/(ortho.top-ortho.bottom):el.clientHeight/(2*camera.position.distanceTo(controls.target)*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))))*renderRatio},touching:false,dragging:false,apply,invalidate,invalidateJob,fit,submit,quality,phase,syncRipple,syncCamera,syncSection,validateInteraction:()=>validateInteraction()};runtime.current=rt;
+  const rt:Runtime={renderer,scene,camera,ortho,controls,body,actors,fields,selection,focus:()=>undefined,sectionGroup,ground,imports,instances:new Map(),request:0,queue,pixelScale:()=>{if(!rt.data){const b=modelBounds(latest.current.model,false),longest=Math.max(b[3]-b[0],b[4]-b[1],b[5]-b[2]);return el.clientHeight/(longest*1.2)*renderRatio}return (isFlat(latest.current.view)?el.clientHeight/(ortho.top-ortho.bottom):el.clientHeight/(2*camera.position.distanceTo(controls.target)*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))))*renderRatio},touching:false,dragging:false,apply,invalidate,invalidateJob,fit,submit,quality,phase,syncRipple,syncCamera,syncSection,validateInteraction:()=>validateInteraction()};runtime.current=rt;
   const requestDetail=()=>{
    if(disposed||!rt.data||latest.current.editing||rt.scheduled?.stage!=='settled')return;
    const pixelsPerUnit=rt.pixelScale(),tolerance=previewRefinement(false,pixelsPerUnit)!.tolerance;
@@ -102,9 +104,13 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
    submit({id,model,resolution:previewResolution(model,{mobile:mobileLayout.matches,editing:false}),draft:false,shading:true,streamSurface:true,previewDetail:true,pixelsPerUnit});
   };
   const observer=new ResizeObserver(resize);observer.observe(el);resize();
-  // Touch has one owner. OrbitControls continues to own mouse navigation only.
-  const session=new TouchSession(),raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),dragPlane=new THREE.Plane(),world=new THREE.Vector3(),dragOffset=new THREE.Vector3();
-  let held=false,mouseMoved=false;let drag:{id:string;pointerId:number;started:boolean;ranges:{x:readonly [number,number];y:readonly [number,number];z:readonly [number,number]};mode:DirectTransformMode;axis:'x'|'y'|'z';model:FormModel;start:{x:number;y:number};anchor:{x:number;y:number};previous:{x:number;y:number};rotation:number}|null=null,mouseFlat:{x:number;y:number}|null=null,origin:{x:number;y:number}|null=null,hold:ReturnType<typeof setTimeout>|undefined;
+  // Touch has one owner, the gesture recognizer. OrbitControls keeps the mouse.
+  const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),dragPlane=new THREE.Plane(),world=new THREE.Vector3(),dragOffset=new THREE.Vector3();
+  let mouseMoved=false,gripPointer:number|undefined,gripAt:{x:number;y:number}|null=null;
+  let drag:{id:string;pointerId:number;started:boolean;grab?:boolean;settled?:boolean;ranges:{x:readonly [number,number];y:readonly [number,number];z:readonly [number,number]};mode:DirectTransformMode;axis:'x'|'y'|'z';model:FormModel;start:{x:number;y:number};anchor:{x:number;y:number};previous:{x:number;y:number};rotation:number}|null=null,mouseFlat:{x:number;y:number}|null=null,origin:{x:number;y:number}|null=null;
+  let pairing:{owner:PairOwner;id?:string;model?:FormModel;started?:boolean;plane?:THREE.Plane;axis?:THREE.Vector3}|undefined;
+  const readout=document.createElement('div');readout.className='gesture-readout';readout.hidden=true;el.appendChild(readout);
+  const say=(text:string)=>{readout.hidden=!text;readout.textContent=text};
   const ray=(x:number,y:number)=>{const rect=renderer.domElement.getBoundingClientRect();pointer.set((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,activeCamera())};
   const hitHandle=(x:number,y:number)=>{
    const p=latest.current;if(!p.handles||p.view==='silhouette')return;
@@ -125,40 +131,125 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
    dragOffset.set(f.x,f.y,f.z).sub(world);
    drag={id:f.id,pointerId:e.pointerId,started:false,ranges:f.ranges,mode:f.mode,axis:latest.current.transformAxis??'z',model:latest.current.model,start:{x:e.clientX,y:e.clientY},anchor:f.anchor,previous:{x:e.clientX,y:e.clientY},rotation:0};rt.dragging=true;return true;
   };
-  const finishDrag=()=>{if(drag?.started)latest.current.onEnd();drag=null;rt.dragging=false;controls.enabled=!isFlat(latest.current.view)&&!rt.touching;invalidate()};
-  const moveDrag=(e:PointerEvent)=>{
-   validateInteraction();if(!drag||drag.pointerId!==e.pointerId)return;
-   if(drag.mode==='move'){ray(e.clientX,e.clientY);if(!raycaster.ray.intersectPlane(dragPlane,world))return}
-   if(!drag.started){drag.started=true;latest.current.onSelect(drag.id,false);latest.current.onStart();session.consume()}
+  const finishDrag=()=>{if(drag?.started)latest.current.onEnd();drag=null;rt.dragging=false;gripPointer=undefined;gripAt=null;controls.enabled=!isFlat(latest.current.view)&&!rt.touching;if(!pairing)say('');invalidate()};
+  const moveDrag=(x:number,y:number)=>{
+   validateInteraction();if(!drag)return;
+   if(drag.mode==='move'){ray(x,y);if(!raycaster.ray.intersectPlane(dragPlane,world))return}
+   if(!drag.started){drag.started=true;latest.current.onSelect(drag.id,false);latest.current.onStart();recognizer.consume()}
    if(drag.mode==='move'){
-    world.add(dragOffset);latest.current.onDrag(drag.id,clamp(world.x,...drag.ranges.x),clamp(world.y,...drag.ranges.y),clamp(world.z,...drag.ranges.z));
+    world.add(dragOffset);const next={x:clamp(world.x,...drag.ranges.x),y:clamp(world.y,...drag.ranges.y),z:clamp(world.z,...drag.ranges.z)};latest.current.onDrag(drag.id,next.x,next.y,next.z);
+    if(drag.grab){const from=selectedHandle(drag.model,drag.id);if(from)say(Math.hypot(next.x-from.x,next.y-from.y,next.z-from.z).toFixed(1)+' mm')}
    }else{
-    if(drag.mode==='rotate'){drag.rotation+=directRotationDelta(drag.previous,{x:e.clientX,y:e.clientY},drag.anchor);drag.previous={x:e.clientX,y:e.clientY}}
-    const amount=drag.mode==='size'?directScaleFactor(e.clientX-drag.start.x,e.clientY-drag.start.y):drag.rotation;
+    if(drag.mode==='rotate'){drag.rotation+=directRotationDelta(drag.previous,{x,y},drag.anchor);drag.previous={x,y}}
+    const amount=drag.mode==='size'?directScaleFactor(x-drag.start.x,y-drag.start.y):drag.rotation;
     const patch=directTransformPatch(drag.model,drag.id,drag.mode,amount,drag.axis);if(patch)latest.current.onTransform?.(drag.id,patch);
    }
    invalidate();
   };
   const validateInteraction=()=>{
    if(!drag)return;const p=latest.current,h=selectedHandle(p.model,drag.id);
-   const mode:DirectTransformMode=h?.kind!=='influence'&&p.onTransform?p.transformMode??'move':'move';
-   if(!h||!p.handles||(drag.started&&p.selected!==drag.id)||mode!==drag.mode||(drag.mode==='rotate'&&(p.transformAxis??'z')!==drag.axis)||(drag.started&&!p.editing)){
-    clearHold();session.consume();held=rt.touching;
+   // A grab selects its own object. Until that selection arrives, it is not a stale drag.
+   if(drag.grab&&!drag.settled){if(p.selected===drag.id&&(!drag.started||p.editing))drag.settled=true;else if(h)return}
+   const mode:DirectTransformMode=drag.grab?'move':h?.kind!=='influence'&&p.onTransform?p.transformMode??'move':'move';
+   if(!h||(!drag.grab&&!p.handles)||(drag.started&&p.selected!==drag.id)||mode!==drag.mode||(drag.mode==='rotate'&&(p.transformAxis??'z')!==drag.axis)||(drag.started&&!p.editing)){
+    recognizer.consume();
     // A tray may already have ended the transaction. Do not end it twice.
     if(drag.started&&!p.editing)drag.started=false;
     finishDrag();mouseMoved=true;origin=null;mouseFlat=null;
    }
   };
-  const clearHold=()=>{if(hold)clearTimeout(hold);hold=undefined};
   const pan=(dx:number,dy:number)=>{const c=activeCamera(),scale=isFlat(latest.current.view)?(ortho.top-ortho.bottom)/el.clientHeight:2*camera.position.distanceTo(controls.target)*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))/el.clientHeight;const delta=new THREE.Vector3().setFromMatrixColumn(c.matrix,0).multiplyScalar(-dx*scale).add(new THREE.Vector3().setFromMatrixColumn(c.matrix,1).multiplyScalar(dy*scale));camera.position.add(delta);controls.target.add(delta);controls.update();syncCamera();invalidate()};
   const zoom=(factor:number)=>{if(!Number.isFinite(factor)||factor<=0)return;const offset=camera.position.clone().sub(controls.target),distance=clamp(offset.length()/factor,controls.minDistance,controls.maxDistance);camera.position.copy(controls.target).add(offset.setLength(distance));controls.update();syncCamera();invalidate()};
   const orbit=(dx:number,dy:number)=>{const offset=camera.position.clone().sub(controls.target),spherical=new THREE.Spherical().setFromVector3(offset);spherical.theta-=dx/el.clientHeight*Math.PI*2;spherical.phi-=dy/el.clientHeight*Math.PI*2;spherical.makeSafe();camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));controls.update();invalidate()};
-  const inspect=(x:number,y:number)=>{if(document.activeElement instanceof HTMLInputElement)document.activeElement.blur();const f=hitHandle(x,y);if(f){latest.current.onSelect(f.id,true);return}if(latest.current.view==='section')return;ray(x,y);const assetHit=raycaster.intersectObjects(imports.children.filter(o=>o.visible),true).find(h=>h.object.userData.assetId),hit=pickCurrentSurface(latest.current.model,raycaster.ray);if(assetHit&&(!hit||assetHit.distance<hit.distance)){latest.current.onSelect(assetHit.object.userData.assetId,true);return}if(hit)latest.current.onSelect(hit.shapeId??(latest.current.model.lattice?.enabled?'lattice':'body'),true)};
+  // A twist turns the view about the vertical, like turning a map: the form follows the fingers.
+  const turn=(radians:number)=>{if(!Number.isFinite(radians))return;const offset=camera.position.clone().sub(controls.target),spherical=new THREE.Spherical().setFromVector3(offset);spherical.theta-=radians;spherical.makeSafe();camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));controls.update();syncCamera();invalidate()};
+  const pickAt=(x:number,y:number):string|undefined=>{ray(x,y);const assetHit=raycaster.intersectObjects(imports.children.filter(o=>o.visible),true).find(h=>h.object.userData.assetId),hit=pickCurrentSurface(latest.current.model,raycaster.ray);if(assetHit&&(!hit||assetHit.distance<hit.distance))return assetHit.object.userData.assetId;if(hit)return hit.shapeId??(latest.current.model.lattice?.enabled?'lattice':'body')};
+  const inspect=(x:number,y:number,touch=false)=>{if(document.activeElement instanceof HTMLInputElement)document.activeElement.blur();const f=hitHandle(x,y);if(f){latest.current.onSelect(f.id,true);return}if(latest.current.view==='section')return;const id=pickAt(x,y);if(id)latest.current.onSelect(id,true);else if(touch)latest.current.onDeselect?.()};
   const tap=(e:PointerEvent)=>inspect(e.clientX,e.clientY);
-  const down=(e:PointerEvent)=>{if(e.pointerType==='touch'){e.stopImmediatePropagation();e.preventDefault();rt.touching=true;quality(true);controls.enabled=false;session.down({id:e.pointerId,x:e.clientX,y:e.clientY},performance.now());renderer.domElement.setPointerCapture(e.pointerId);if(session.points.size===1){held=false;origin={x:e.clientX,y:e.clientY};prepareDrag(e);clearHold();hold=setTimeout(()=>{if(session.points.size===1){held=true;session.consume();finishDrag();inspect(e.clientX,e.clientY)}},520)}else{held=false;clearHold();finishDrag()}return}if(e.button!==0)return;mouseMoved=false;origin={x:e.clientX,y:e.clientY};if(prepareDrag(e)||isFlat(latest.current.view)){controls.enabled=false;mouseFlat=isFlat(latest.current.view)?{x:e.clientX,y:e.clientY}:null;renderer.domElement.setPointerCapture(e.pointerId);e.stopImmediatePropagation();e.preventDefault()}};
-  const move=(e:PointerEvent)=>{if(e.pointerType==='touch'){if(!session.points.has(e.pointerId))return;e.stopImmediatePropagation();e.preventDefault();if(held)return;const previous=session.snapshot();session.move({id:e.pointerId,x:e.clientX,y:e.clientY});const next=session.snapshot(),moved=origin&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>6;if(moved)clearHold();if(next.count===2){const dx=next.x-previous.x,dy=next.y-previous.y;pan(dx,dy);if(previous.distance>0)zoom(next.distance/previous.distance)}else if(next.count===1&&previous.count===1&&!session.multiple){if(drag){if(moved)moveDrag(e)}else if(moved){session.consume();isFlat(latest.current.view)?pan(next.x-previous.x,next.y-previous.y):orbit(next.x-previous.x,next.y-previous.y)}}return}if(origin&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>4)mouseMoved=true;if(drag&&drag.pointerId===e.pointerId&&origin&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>3){moveDrag(e);e.preventDefault()}else if(mouseFlat){pan(e.clientX-mouseFlat.x,e.clientY-mouseFlat.y);mouseFlat={x:e.clientX,y:e.clientY}}};
-  const up=(e:PointerEvent)=>{validateInteraction();if(e.pointerType==='touch'){if(!session.points.has(e.pointerId))return;e.stopImmediatePropagation();e.preventDefault();clearHold();session.move({id:e.pointerId,x:e.clientX,y:e.clientY});if(drag?.pointerId===e.pointerId)finishDrag();const action=session.up(e.pointerId,performance.now(),e.type==='pointercancel'||e.type==='lostpointercapture');if(action==='undo')latest.current.onUndo();else if(action==='tap')tap(e);if(!session.points.size){quality(false);rt.touching=false;controls.enabled=!isFlat(latest.current.view);origin=null}if(renderer.domElement.hasPointerCapture(e.pointerId))renderer.domElement.releasePointerCapture(e.pointerId);invalidate();return}const moved=origin?Math.hypot(e.clientX-origin.x,e.clientY-origin.y):Infinity;finishDrag();mouseFlat=null;if(!mouseMoved&&moved<4&&e.type==='pointerup'&&e.button===0)tap(e);origin=null};
-  const cancel=()=>{clearHold();finishDrag();session.reset();quality(false);rt.touching=false;mouseFlat=null;origin=null;controls.enabled=!isFlat(latest.current.view)};
+  // The selection's frame on screen is where two fingers, or a held one, take the object.
+  const frameOutline=(id:string)=>{const frame=selectionFrame(latest.current.model,id);if(!frame)return;const rect=renderer.domElement.getBoundingClientRect(),cam=activeCamera(),v=new THREE.Vector3(),points:{x:number;y:number}[]=[];for(const c of frame.corners){v.set(c.x,c.y,c.z).project(cam);if(v.z>1||v.z< -1)return;points.push({x:(v.x+1)*rect.width/2+rect.left,y:(-v.y+1)*rect.height/2+rect.top})}return points};
+  const inFrame=(id:string,x:number,y:number,slop=12)=>{const outline=frameOutline(id);return !!outline&&nearHull(outline,{x,y},slop)};
+  const grab=(x:number,y:number)=>{
+   const p=latest.current;if(p.view==='section'||p.view==='silhouette'||!p.onTransform)return false;
+   const picked=pickAt(x,y),pickedHandle=picked?selectedHandle(p.model,picked):undefined,own=p.selected?selectedHandle(p.model,p.selected):undefined;
+   const id=pickedHandle&&pickedHandle.kind!=='influence'?picked!:own&&own.kind!=='influence'&&inFrame(p.selected,x,y,0)?p.selected:undefined;
+   if(!id){if(picked)p.onSelect(picked,false);return false}
+   const handle=selectedHandle(p.model,id)!;
+   ray(x,y);dragPlane.setFromNormalAndCoplanarPoint(activeCamera().getWorldDirection(new THREE.Vector3()),new THREE.Vector3(handle.x,handle.y,handle.z));
+   if(!raycaster.ray.intersectPlane(dragPlane,world))return false;
+   dragOffset.set(handle.x,handle.y,handle.z).sub(world);
+   drag={id,pointerId:-1,started:false,grab:true,settled:false,ranges:handle.ranges,mode:'move',axis:'z',model:p.model,start:{x,y},anchor:{x,y},previous:{x,y},rotation:0};rt.dragging=true;
+   p.onSelect(id,false);say('Move');invalidate();return true;
+  };
+  const pairStart=(c:{x:number;y:number}):PairOwner=>{
+   if(drag)finishDrag();
+   const p=latest.current,id=p.selected;
+   if(p.view!=='section'&&p.onTransform&&id&&composeDirectPatch(p.model,id,{scale:1.01})&&inFrame(id,c.x,c.y)){
+    const frame=selectionFrame(p.model,id)!,center=new THREE.Vector3(frame.center.x,frame.center.y,frame.center.z),cam=activeCamera(),facing=cam.getWorldDirection(new THREE.Vector3());
+    pairing={owner:{kind:'object'},id,model:p.model,started:false,plane:new THREE.Plane().setFromNormalAndCoplanarPoint(facing,center),axis:isFlat(p.view)?facing.clone().negate():cam.position.clone().sub(center).normalize()};
+   }else pairing={owner:{kind:'camera'}};
+   return pairing.owner;
+  };
+  const planeAt=(x:number,y:number,plane:THREE.Plane)=>{ray(x,y);return raycaster.ray.intersectPlane(plane,new THREE.Vector3())};
+  const pairMove=(g:PairGesture)=>{
+   const p=latest.current;
+   if(g.owner.kind==='camera'){if(g.active.pan)pan(g.step.pan.x,g.step.pan.y);if(g.active.scale)zoom(g.step.scale);if(g.active.rotate&&!isFlat(p.view))turn(g.step.rotation);return}
+   const s=pairing;if(!s?.id||!s.model||!s.plane||!s.axis)return;
+   let move:{x:number;y:number;z:number}|undefined;
+   if(g.active.pan){const from=planeAt(g.centroid.x-g.pan.x,g.centroid.y-g.pan.y,s.plane),to=planeAt(g.centroid.x,g.centroid.y,s.plane);if(from&&to)move={x:to.x-from.x,y:to.y-from.y,z:to.z-from.z}}
+   const patch=composeDirectPatch(s.model,s.id,{move,scale:g.active.scale?g.scale:undefined,turn:g.active.rotate?{axis:{x:s.axis.x,y:s.axis.y,z:s.axis.z},radians:g.rotation}:undefined});
+   if(!patch)return;
+   if(!s.started){s.started=true;p.onStart()}
+   p.onTransform?.(s.id,patch);
+   const parts:string[]=[];if(g.active.scale)parts.push('× '+g.scale.toFixed(2));if(g.active.rotate)parts.push(Math.round(g.rotation*180/Math.PI)+'°');if(move)parts.push(Math.hypot(move.x,move.y,move.z).toFixed(1)+' mm');say(parts.join('  ·  '));
+   invalidate();
+  };
+  const pairEnd=()=>{const s=pairing;pairing=undefined;if(s?.started)latest.current.onEnd();say('')};
+  const recognizer=new GestureRecognizer({
+   orbit:(dx,dy)=>{if(isFlat(latest.current.view))pan(dx,dy);else orbit(dx,dy)},
+   tap:(x,y)=>inspect(x,y,true),
+   doubleTap:()=>fit(),
+   hold:grab,
+   grabMove:(x,y)=>moveDrag(x,y),
+   grabEnd:()=>finishDrag(),
+   pairStart,pair:pairMove,pairEnd,
+   twoFingerTap:()=>latest.current.onUndo(),
+   threeFingerTap:()=>latest.current.onRedo?.(),
+  });
+  const down=(e:PointerEvent)=>{
+   if(e.pointerType==='touch'){
+    e.stopImmediatePropagation();e.preventDefault();rt.touching=true;quality(true);controls.enabled=false;
+    try{renderer.domElement.setPointerCapture(e.pointerId)}catch{}
+    const now=e.timeStamp;
+    if(!recognizer.active){origin={x:e.clientX,y:e.clientY};if(prepareDrag(e)){gripPointer=e.pointerId;gripAt={x:e.clientX,y:e.clientY};recognizer.down(e.pointerId,e.clientX,e.clientY,now);recognizer.consume();return}}
+    else if(gripPointer!==undefined){const id=gripPointer,at=gripAt;finishDrag();if(at)recognizer.move(id,at.x,at.y)}
+    recognizer.down(e.pointerId,e.clientX,e.clientY,now);
+    return;
+   }
+   if(e.button!==0)return;mouseMoved=false;origin={x:e.clientX,y:e.clientY};if(prepareDrag(e)||isFlat(latest.current.view)){controls.enabled=false;mouseFlat=isFlat(latest.current.view)?{x:e.clientX,y:e.clientY}:null;renderer.domElement.setPointerCapture(e.pointerId);e.stopImmediatePropagation();e.preventDefault()}
+  };
+  const move=(e:PointerEvent)=>{
+   if(e.pointerType==='touch'){
+    if(!rt.touching)return;e.stopImmediatePropagation();e.preventDefault();
+    if(e.pointerId===gripPointer){gripAt={x:e.clientX,y:e.clientY};if(drag&&origin&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>6)moveDrag(e.clientX,e.clientY);return}
+    recognizer.move(e.pointerId,e.clientX,e.clientY);return;
+   }
+   if(origin&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>4)mouseMoved=true;if(drag&&drag.pointerId===e.pointerId&&origin&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>3){moveDrag(e.clientX,e.clientY);e.preventDefault()}else if(mouseFlat){pan(e.clientX-mouseFlat.x,e.clientY-mouseFlat.y);mouseFlat={x:e.clientX,y:e.clientY}}
+  };
+  const up=(e:PointerEvent)=>{
+   validateInteraction();
+   if(e.pointerType==='touch'){
+    if(!rt.touching)return;e.stopImmediatePropagation();e.preventDefault();
+    if(e.pointerId===gripPointer)finishDrag();
+    recognizer.up(e.pointerId,e.timeStamp,e.type==='pointercancel'||e.type==='lostpointercapture');
+    if(!recognizer.active){quality(false);rt.touching=false;controls.enabled=!isFlat(latest.current.view);origin=null}
+    if(renderer.domElement.hasPointerCapture(e.pointerId))renderer.domElement.releasePointerCapture(e.pointerId);
+    invalidate();return;
+   }
+   const moved=origin?Math.hypot(e.clientX-origin.x,e.clientY-origin.y):Infinity;finishDrag();mouseFlat=null;if(!mouseMoved&&moved<4&&e.type==='pointerup'&&e.button===0)tap(e);origin=null
+  };
+  const cancel=()=>{recognizer.reset();finishDrag();pairEnd();quality(false);rt.touching=false;mouseFlat=null;origin=null;controls.enabled=!isFlat(latest.current.view)};
+  rt.focus=()=>{const rect=renderer.domElement.getBoundingClientRect();if(!rect.width||!rect.height)return;ray(rect.left+rect.width/2,rect.top+rect.height*.45);const flat=isFlat(latest.current.view),hit=latest.current.view==='section'?undefined:pickCurrentSurface(latest.current.model,raycaster.ray),point=hit?.point??{x:controls.target.x,y:controls.target.y,z:controls.target.z},cam=activeCamera(),facing=cam.getWorldDirection(new THREE.Vector3()),distance=camera.position.distanceTo(new THREE.Vector3(point.x,point.y,point.z));return {x:point.x,y:point.y,z:point.z,surface:!!hit,span:flat?ortho.top-ortho.bottom:2*distance*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),view:{x:facing.x,y:facing.y,z:facing.z}}};
   const visibility=()=>{if(document.hidden){cancel();queue.pause();sectionQueue.pause();cancelAnimationFrame(frame);frame=0}else{const job=queue.resume();if(job)dispatch(job);const slice=sectionQueue.resume();if(slice)dispatchSection(slice);invalidate()}};
   const wheel=(e:WheelEvent)=>{if(!isFlat(latest.current.view))return;e.stopImmediatePropagation();e.preventDefault();zoom(Math.exp(-e.deltaY*.001))};
   const context=(e:Event)=>e.preventDefault();
@@ -184,7 +275,7 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
   const timer=setTimeout(()=>{if(runtime.current===r&&previewNeedsSettle(r.scheduled,geometryKey))submit(false,false)},160);
   return()=>clearTimeout(timer);
  },[geometryKey,props.editing]);
- useEffect(()=>{const r=runtime.current;if(!r)return;styleBody(r,props);r.syncRipple();r.syncCamera();r.controls.enabled=!isFlat(props.view)&&!r.touching&&!r.dragging;r.ground.visible=!isFlat(props.view);r.body.visible=props.view!=='section';r.actors.visible=props.components&&!isFlat(props.view);r.fields.visible=props.handles&&props.view!=='silhouette';r.sectionGroup.visible=props.view==='section';r.imports.visible=!isFlat(props.view);r.renderer.setClearColor(props.canvasColor??PALETTES[props.appearance].canvas);r.invalidate()},[props.view,props.components,props.handles,props.wireframe,props.appearance,props.model,props.playing,props.canvasColor,props.transformMode,props.transformAxis]);
+ useEffect(()=>{const r=runtime.current;if(!r)return;styleBody(r,props);r.syncRipple();r.syncCamera();r.controls.enabled=!isFlat(props.view)&&!r.touching&&!r.dragging;r.ground.visible=!isFlat(props.view);r.body.visible=props.view!=='section';r.actors.visible=props.components&&!isFlat(props.view);r.fields.visible=props.handles&&props.view!=='silhouette';r.selection.visible=props.view!=='silhouette'&&props.view!=='section';r.sectionGroup.visible=props.view==='section';r.imports.visible=!isFlat(props.view);r.renderer.setClearColor(props.canvasColor??PALETTES[props.appearance].canvas);r.invalidate()},[props.view,props.components,props.handles,props.wireframe,props.appearance,props.model,props.playing,props.canvasColor,props.transformMode,props.transformAxis]);
  useEffect(()=>{const r=runtime.current;if(!r)return;clearGroup(r.actors);r.actors.add(cameraParts(props.model));r.invalidate()},[props.model.lenses,props.model.lensRadius,props.model.lensSpacing,props.model.width,props.model.height,props.model.depth,props.model.buttons,props.model.usb]);
  useEffect(()=>{const r=runtime.current;if(!r)return;const assets=props.model.assets??[],ids=new Set(assets.map(a=>a.id));
   for(const [id,group] of r.instances)if(!ids.has(id)||assets.find(a=>a.id===id)?.sourceId!==group.userData.sourceId){clearGroup(group);r.imports.remove(group);r.instances.delete(id)}
@@ -193,7 +284,9 @@ export const Viewport=forwardRef<ViewportRef,Props>(function Viewport(props,ref)
   }const envelopeKey=JSON.stringify(asset.envelope??null);if(group.userData.envelopeKey!==envelopeKey){const old=group.getObjectByName('measured-envelope') as THREE.LineSegments|undefined;if(old){group.remove(old);old.geometry.dispose();(old.material as THREE.Material).dispose()}if(asset.envelope){const box=new THREE.BoxGeometry(...asset.envelope),lines=new THREE.LineSegments(new THREE.EdgesGeometry(box),new THREE.LineBasicMaterial({color:0x5cb8aa,transparent:true,opacity:.65}));box.dispose();lines.name='measured-envelope';lines.userData.assetId=asset.id;group.add(lines)}group.userData.envelopeKey=envelopeKey}group.visible=asset.visible;group.position.set(asset.x,asset.y,asset.z);group.rotation.set(...[asset.rx,asset.ry,asset.rz].map(THREE.MathUtils.degToRad) as [number,number,number]);group.scale.setScalar(asset.scale);group.updateMatrixWorld(true);
   }r.invalidate();
  },[props.model.assets,assetRetry]);
- useEffect(()=>{const r=runtime.current;if(!r)return;clearGroup(r.fields);for(const f of props.model.influences){if(!f.enabled)continue;const selected=f.id===props.selected;if(!selected&&props.view!=='field')continue;const color=selected?PALETTES[props.appearance].handle:PALETTES[props.appearance].grid,g=new THREE.Group();g.position.set(f.x,f.y,f.z);const points:THREE.Vector3[]=[];for(let i=0;i<=72;i++){const a=i/72*Math.PI*2;points.push(new THREE.Vector3(Math.cos(a)*f.radius,Math.sin(a)*f.radius,0))}const circle=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineDashedMaterial({color,transparent:true,opacity:.5,dashSize:3,gapSize:3,depthTest:false}));circle.computeLineDistances();circle.renderOrder=9;g.add(circle);const dot=new THREE.Mesh(new THREE.SphereGeometry(2.5,12,10),new THREE.MeshBasicMaterial({color,depthTest:false}));dot.renderOrder=10;g.add(dot);r.fields.add(g)}const handle=selectedHandle(props.model,props.selected);if(handle){const color=PALETTES[props.appearance].handle,mode:DirectTransformMode=handle.kind!=='influence'&&props.onTransform?props.transformMode??'move':'move';if(mode==='move'||directTransformPatch(props.model,handle.id,mode,mode==='size'?1:0,props.transformAxis)){const grip=makeGrip(color,mode);grip.position.set(handle.x,handle.y,handle.z);r.fields.add(grip);}const shape=props.model.shapes?.find(s=>s.id===handle.id);if(shape){const b=shapeBounds(shape),box=new THREE.BoxGeometry(b[3]-b[0],b[4]-b[1],b[5]-b[2]),outline=new THREE.LineSegments(new THREE.EdgesGeometry(box),new THREE.LineBasicMaterial({color,transparent:true,opacity:props.editing?.55:.3,depthTest:false}));box.dispose();outline.position.set((b[0]+b[3])/2,(b[1]+b[4])/2,(b[2]+b[5])/2);outline.renderOrder=8;r.fields.add(outline)}}r.invalidate()},[props.model.influences,props.model.shapes,props.model.assets,props.selected,props.view,props.appearance,props.editing,props.transformMode,props.transformAxis,props.onTransform]);
+ useEffect(()=>{const r=runtime.current;if(!r)return;clearGroup(r.fields);for(const f of props.model.influences){if(!f.enabled)continue;const selected=f.id===props.selected;if(!selected&&props.view!=='field')continue;const color=selected?PALETTES[props.appearance].handle:PALETTES[props.appearance].grid,g=new THREE.Group();g.position.set(f.x,f.y,f.z);const points:THREE.Vector3[]=[];for(let i=0;i<=72;i++){const a=i/72*Math.PI*2;points.push(new THREE.Vector3(Math.cos(a)*f.radius,Math.sin(a)*f.radius,0))}const circle=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineDashedMaterial({color,transparent:true,opacity:.5,dashSize:3,gapSize:3,depthTest:false}));circle.computeLineDistances();circle.renderOrder=9;g.add(circle);const dot=new THREE.Mesh(new THREE.SphereGeometry(2.5,12,10),new THREE.MeshBasicMaterial({color,depthTest:false}));dot.renderOrder=10;g.add(dot);r.fields.add(g)}const handle=selectedHandle(props.model,props.selected);if(handle){const color=PALETTES[props.appearance].handle,mode:DirectTransformMode=handle.kind!=='influence'&&props.onTransform?props.transformMode??'move':'move';if(mode==='move'||directTransformPatch(props.model,handle.id,mode,mode==='size'?1:0,props.transformAxis)){const grip=makeGrip(color,mode);grip.position.set(handle.x,handle.y,handle.z);r.fields.add(grip);}}r.invalidate()},[props.model.influences,props.model.shapes,props.model.assets,props.selected,props.view,props.appearance,props.editing,props.transformMode,props.transformAxis,props.onTransform]);
+ // The selection is always drawn as its own box, with or without a grip: it is also where two fingers take it.
+ useEffect(()=>{const r=runtime.current;if(!r)return;clearGroup(r.selection);const frame=selectionFrame(props.model,props.selected);if(frame){const points:number[]=[];for(let i=0;i<8;i++)for(const bit of [1,2,4])if(!(i&bit)){const a=frame.corners[i],b=frame.corners[i|bit];points.push(a.x,a.y,a.z,b.x,b.y,b.z)}const lines=new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(points,3)),new THREE.LineBasicMaterial({color:PALETTES[props.appearance].handle,transparent:true,opacity:props.editing?.8:.5,depthTest:false}));lines.renderOrder=8;r.selection.add(lines)}r.invalidate()},[props.model,props.selected,props.appearance,props.editing]);
  useEffect(()=>{const r=runtime.current;if(!r)return;r.syncSection();r.invalidate()},[props.view,props.model,props.section,props.appearance,props.editing,props.playing]);
  if(softwarePreview)return <SoftwareViewport {...props} ref={software}/>;
  return <div className="viewport-mount" ref={mount} aria-label="Interactive form viewport">{busy&&<span className="evaluating" aria-label="Evaluating"/>}{error&&<div className="viewport-error" role="alert">{error}</div>}{!error&&props.model.baseEnabled===false&&!props.model.shapes?.some(s=>s.enabled&&s.operation==='union')&&<div className="viewport-empty"><strong>Start a construction</strong><span>Insert a sweep or a shape to begin.</span></div>}</div>

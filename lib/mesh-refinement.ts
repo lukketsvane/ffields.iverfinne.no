@@ -13,6 +13,8 @@ export type MeshRefinementOptions={
  /** An additional world-coordinate limit on midpoint projection. */
  maxProjectionDistance?:number;
  projectionIterations?:number;
+ /** Vertices whose incident edges keep their exact positions (resolved seams). */
+ lockedVertices?:Uint8Array;
 };
 export type MeshRefinementStats={
  passes:number;inputTriangles:number;outputTriangles:number;markedEdges:number;
@@ -38,6 +40,7 @@ const length3=(x:number,y:number,z:number)=>Math.hypot(x,y,z);
 function* refinementSteps(mesh:MeshData,field:SurfaceField,options:MeshRefinementOptions):Generator<void,RefinedMeshData,void> {
  const tolerance=options.tolerance,maxPasses=options.maxPasses??2,maxTriangles=options.maxTriangles??900000;
  const displacementFraction=options.maxEdgeDisplacement??.55,maxDistance=options.maxProjectionDistance??Infinity,iterations=options.projectionIterations??8;
+ const locked=options.lockedVertices;
  if(!Number.isFinite(tolerance)||tolerance<=0)throw Error('Surface refinement needs a positive finite field tolerance.');
  if(!Number.isInteger(maxPasses)||maxPasses<0||maxPasses>6)throw Error('Surface refinement supports zero to six passes.');
  if(!Number.isInteger(maxTriangles)||maxTriangles<1)throw Error('Surface refinement needs a positive triangle budget.');
@@ -121,7 +124,7 @@ function* refinementSteps(mesh:MeshData,field:SurfaceField,options:MeshRefinemen
  stats.maxMidpointResidualBefore=analysis.maxMidpointResidual;stats.maxFaceResidualBefore=analysis.maxFaceResidual;stats.meanMidpointResidualBefore=analysis.meanMidpointResidual;stats.meanFaceResidualBefore=analysis.meanFaceResidual;
  for(let pass=0;pass<maxPasses;pass++){
   if(stats.nonfiniteFieldValues){stats.qualityLimited=true;break;}
-  const unsorted:Edge[]=[];let processed=0;for(const edge of analysis.edges.values()){if(edge.priority>tolerance&&edge.length>1e-8&&!blockedEdges.has(edge.a+':'+edge.b))unsorted.push(edge);if(++processed%512===0)yield;}const candidates=yield* sortedEdges(unsorted);
+  const unsorted:Edge[]=[];let processed=0;for(const edge of analysis.edges.values()){if(edge.priority>tolerance&&edge.length>1e-8&&!blockedEdges.has(edge.a+':'+edge.b)&&!(locked&&(locked[edge.a]===1||locked[edge.b]===1)))unsorted.push(edge);if(++processed%512===0)yield;}const candidates=yield* sortedEdges(unsorted);
   if(!candidates.length)break;
   let triangleCount=current.indices.length/3;let selected:Edge[]=[];
   for(const edge of candidates){if(++processed%512===0)yield;if(triangleCount+edge.faces.length>maxTriangles){stats.budgetLimited=true;continue;}selected.push(edge);triangleCount+=edge.faces.length;}

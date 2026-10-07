@@ -1,7 +1,7 @@
 import type {FormModel} from './form-engine.ts';
-import {evaluateBase,withoutRipples} from './form-engine.ts';
+import {evaluateBase,withoutRipples,LIMITS} from './form-engine.ts';
 import {resolveAttachments} from './attachments.ts';
-import {compileShape,isValidSweepPath,SHAPE_LIMITS} from './shapes.ts';
+import {compileShape,isValidSweepPath,shapeBounds,SHAPE_LIMITS} from './shapes.ts';
 import type {FormShape,ShapeEvaluator} from './shapes.ts';
 import type {PlacedAsset} from './assets.ts';
 import {scaleSweep,sweepScaleLimits} from './quick-modelling.ts';
@@ -10,7 +10,7 @@ import {resolveComponentClearances} from './component-clearance.ts';
 export type Point3={x:number;y:number;z:number};
 export type ScreenPoint={x:number;y:number;z?:number};
 export type DirectTransformMode='move'|'size'|'rotate';
-export type DirectTransformPatch={shape?:Partial<FormShape>;asset?:Partial<PlacedAsset>};
+export type DirectTransformPatch={shape?:Partial<FormShape>;asset?:Partial<PlacedAsset>;base?:Partial<Pick<FormModel,'width'|'height'|'depth'>>};
 type Axis='x'|'y'|'z';
 const axes:readonly Axis[]=['x','y','z'];
 const bounded=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
@@ -168,4 +168,83 @@ export function pickShapeAtPoint(model:FormModel,point:Point3,tolerance=2,option
   }
  }
  return picked;
+}
+
+type Euler={rx:number;ry:number;rz:number};
+/** Row-major rotation for degrees in the Three.js 'XYZ' order used by shapes and asset groups. */
+export function eulerMatrix(rx:number,ry:number,rz:number):number[] {
+ const ax=rx*Math.PI/180,ay=ry*Math.PI/180,az=rz*Math.PI/180,cx=Math.cos(ax),sx=Math.sin(ax),cy=Math.cos(ay),sy=Math.sin(ay),cz=Math.cos(az),sz=Math.sin(az);
+ return [cy*cz,-cy*sz,sy,cx*sz+sx*sy*cz,cx*cz-sx*sy*sz,-sx*cy,sx*sz-cx*sy*cz,sx*cz+cx*sy*sz,cx*cy];
+}
+function eulerFromMatrix(r:number[]):Euler {
+ const y=Math.asin(bounded(r[2],-1,1));
+ const [x,z]=Math.abs(r[2])<.9999999?[Math.atan2(-r[5],r[8]),Math.atan2(-r[1],r[0])]:[Math.atan2(r[7],r[4]),0];
+ const degrees=(value:number)=>Math.round(wrappedDegrees(value*180/Math.PI)*1e6)/1e6;
+ return {rx:degrees(x),ry:degrees(y),rz:degrees(z)};
+}
+/** Turn an authored orientation about a world axis through its own centre.
+ * The twist follows what the person sees, whatever the object's current Euler angles. */
+export function rotateAboutWorldAxis(rotation:Euler,axis:Point3,radians:number):Euler {
+ const length=Math.hypot(axis.x,axis.y,axis.z);
+ if(!Number.isFinite(radians)||!Number.isFinite(length)||length<1e-12||!radians)return {...rotation};
+ const x=axis.x/length,y=axis.y/length,z=axis.z/length,c=Math.cos(radians),s=Math.sin(radians),k=1-c;
+ const q=[c+x*x*k,x*y*k-z*s,x*z*k+y*s,y*x*k+z*s,c+y*y*k,y*z*k-x*s,z*x*k-y*s,z*y*k+x*s,c+z*z*k];
+ const r=eulerMatrix(rotation.rx,rotation.ry,rotation.rz),m=new Array<number>(9);
+ for(let i=0;i<3;i++)for(let j=0;j<3;j++)m[i*3+j]=q[i*3]*r[j]+q[i*3+1]*r[3+j]+q[i*3+2]*r[6+j];
+ return eulerFromMatrix(m);
+}
+
+export type DirectComposite={move?:Point3;scale?:number;turn?:{axis:Point3;radians:number}};
+/** One absolute patch for a whole two-finger or grab gesture, computed from the
+ * immutable model at gesture start: pan moves, pinch scales about the centre,
+ * twist turns about the view axis. The base mass only scales. */
+export function composeDirectPatch(model:FormModel,id:string,change:DirectComposite):DirectTransformPatch|undefined {
+ const scale=change.scale!==undefined&&Number.isFinite(change.scale)&&change.scale>0&&change.scale!==1?change.scale:undefined;
+ const turn=change.turn&&Number.isFinite(change.turn.radians)&&change.turn.radians!==0?change.turn:undefined;
+ const move=change.move&&[change.move.x,change.move.y,change.move.z].every(Number.isFinite)&&(change.move.x||change.move.y||change.move.z)?change.move:undefined;
+ if(id==='body'){
+  if(model.baseEnabled===false||!scale)return undefined;
+  let min=0,max=Infinity;
+  for(const key of ['width','height','depth'] as const){min=Math.max(min,LIMITS[key][0]/model[key]);max=Math.min(max,LIMITS[key][1]/model[key]);}
+  if(!(min<=max))return undefined;
+  const factor=bounded(scale,min,max);
+  return {base:{width:bounded(model.width*factor,...LIMITS.width),height:bounded(model.height*factor,...LIMITS.height),depth:bounded(model.depth*factor,...LIMITS.depth)}};
+ }
+ const handle=selectedHandle(model,id);
+ if(!handle||handle.kind==='influence'||(!scale&&!turn&&!move))return undefined;
+ const shape=handle.kind==='shape'?model.shapes!.find(s=>s.id===id)!:undefined,asset=handle.kind==='asset'?model.assets!.find(a=>a.id===id)!:undefined;
+ const patch:Record<string,unknown>={};
+ if(scale){const sized=directTransformPatch(model,id,'size',scale);Object.assign(patch,sized?.shape??sized?.asset??{});}
+ if(turn){const object=(shape??asset)!;Object.assign(patch,rotateAboutWorldAxis({rx:object.rx,ry:object.ry,rz:object.rz},turn.axis,turn.radians));}
+ if(move)for(const axis of axes)patch[axis]=bounded(handle[axis]+move[axis],...handle.ranges[axis]);
+ if(!Object.keys(patch).length)return undefined;
+ const result:DirectTransformPatch=shape?{shape:patch as Partial<FormShape>}:{asset:patch as Partial<PlacedAsset>};
+ if(model.attachments?.length||model.componentClearances?.length){
+  const candidate={...model,shapes:model.shapes?.map(s=>s.id===id&&result.shape?{...s,...result.shape}:s),assets:model.assets?.map(a=>a.id===id&&result.asset?{...a,...result.asset}:a)};
+  try{resolveAttachments(resolveComponentClearances(candidate));}catch{return undefined;}
+ }
+ return result;
+}
+
+/** The box a selection is drawn and touched by: oriented for primitives and
+ * measured components, axis-aligned for sweeps and the base mass. */
+export function selectionFrame(model:FormModel,id:string):{center:Point3;corners:Point3[];size:[number,number,number];rotation:Euler}|undefined {
+ const box=(center:Point3,size:[number,number,number],rotation:Euler)=>{
+  const r=eulerMatrix(rotation.rx,rotation.ry,rotation.rz),corners:Point3[]=[];
+  for(const sx of [-1,1])for(const sy of [-1,1])for(const sz of [-1,1]){
+   const lx=sx*size[0]/2,ly=sy*size[1]/2,lz=sz*size[2]/2;
+   corners.push({x:center.x+r[0]*lx+r[1]*ly+r[2]*lz,y:center.y+r[3]*lx+r[4]*ly+r[5]*lz,z:center.z+r[6]*lx+r[7]*ly+r[8]*lz});
+  }
+  return {center,corners,size,rotation};
+ };
+ const shape=model.shapes?.find(s=>s.id===id&&s.enabled);
+ if(shape){
+  if(shape.kind!=='sweep')return box({x:shape.x,y:shape.y,z:shape.z},[shape.width,shape.height,shape.depth],{rx:shape.rx,ry:shape.ry,rz:shape.rz});
+  const b=shapeBounds(shape);
+  return box({x:(b[0]+b[3])/2,y:(b[1]+b[4])/2,z:(b[2]+b[5])/2},[b[3]-b[0],b[4]-b[1],b[5]-b[2]],{rx:0,ry:0,rz:0});
+ }
+ const asset=model.assets?.find(a=>a.id===id&&a.visible);
+ if(asset?.envelope)return box({x:asset.x,y:asset.y,z:asset.z},asset.envelope.map(v=>v*asset.scale) as [number,number,number],{rx:asset.rx,ry:asset.ry,rz:asset.rz});
+ if(id==='body'&&model.baseEnabled!==false)return box({x:0,y:0,z:0},[model.width,model.height,model.depth],{rx:0,ry:0,rz:0});
+ return undefined;
 }
