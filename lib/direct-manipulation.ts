@@ -248,3 +248,12 @@ export function selectionFrame(model:FormModel,id:string):{center:Point3;corners
  if(id==='body'&&model.baseEnabled!==false)return box({x:0,y:0,z:0},[model.width,model.height,model.depth],{rx:0,ry:0,rz:0});
  return undefined;
 }
+
+/** Project a screen displacement onto one world axis, in millimetres.
+ * An axis aimed into the camera uses vertical motion rather than becoming
+ * impossible to move. Other coordinates are untouched by the caller. */
+export function axisDragDistance(dx:number,dy:number,sx:number,sy:number,depthScale=.2):number {
+ if(![dx,dy,sx,sy,depthScale].every(Number.isFinite))return 0;
+ const length=sx*sx+sy*sy;
+ return length>.01?(dx*sx+dy*sy)/length:-dy*depthScale;
+}

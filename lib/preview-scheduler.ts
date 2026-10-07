@@ -7,11 +7,11 @@ export type ScheduledPreview={geometry:string;stage:PreviewStage};
 
 /** Focus/gesture state is not geometry. Opening a tool or releasing an
  * unchanged grip must never replace an already fine surface with a draft.
- * A committed/load operation begins directly at settled quality. Drafts are
- * reserved for actual geometry changes during a continuous input gesture. */
+ * Every new geometry snapshot starts with a bounded draft. The displayed
+ * draft completes before its expensive refinement starts. */
 export function previewUpdateStage(previous:ScheduledPreview|undefined,geometry:string,editing:boolean):PreviewStage|undefined{
  if(previous?.geometry===geometry)return previous.stage==='draft'&&!editing?'settled':undefined;
- return editing?'draft':'settled';
+ return 'draft';
 }
 
 /** Numeric focus can remain active indefinitely. Silence between geometry
@@ -47,13 +47,13 @@ export function previewResolution(model:FormModel,quality:PreviewQuality):number
  for(const shape of model.shapes??[]){if(!shape.enabled)continue;cost+=shape.kind==='sweep'?4+Math.log2(Math.max(2,(shape.path?.length??2)*8)):1;}
  for(const field of model.influences)if(field.enabled&&field.kind!=='wave'&&field.strength!==0)cost+=2;
  if(model.lattice?.enabled)cost+=6;
- const ceiling=quality.editing?(quality.mobile?60:72):(quality.mobile?136:164),floor=quality.editing?(quality.mobile?28:36):(quality.mobile?128:160);
+ const ceiling=quality.editing?(quality.mobile?32:40):(quality.mobile?96:128),floor=quality.editing?(quality.mobile?20:24):(quality.mobile?64:80);
  let resolution=ceiling/Math.cbrt(Math.max(1,cost/(quality.editing?8:12)));
  // A real completed preview may lower later draft effort. Settled previews
  // retain their independent floor; an expensive draft cannot poison export.
  const previous=quality.previous;
  if(quality.editing&&previous&&Number.isFinite(previous.milliseconds)&&previous.milliseconds>0&&Number.isFinite(previous.resolution)&&previous.resolution>0){
-  const target=quality.mobile?180:120;
+  const target=quality.mobile?70:50;
   resolution=Math.min(resolution,previous.resolution*Math.cbrt(target/previous.milliseconds));
  }
  return Math.max(floor,Math.min(ceiling,Math.round(resolution/4)*4));

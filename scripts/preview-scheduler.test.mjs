@@ -21,13 +21,13 @@ test('new input invalidates an old settled response before its debounce dispatch
  assert.deepEqual(queue.enqueue({id:2}),{id:2});assert.deepEqual(queue.finish(2),{accept:true});
 });
 
-test('ordinary project load and committed changes start fine; focus and release never downgrade the same geometry',()=>{
- assert.equal(previewUpdateStage(undefined,'camera',false),'settled');
+test('ordinary project load and committed changes start with immediate feedback; focus and release never downgrade the same geometry',()=>{
+ assert.equal(previewUpdateStage(undefined,'camera',false),'draft');
  const fine={geometry:'camera',stage:'settled'};
  assert.equal(previewUpdateStage(fine,'camera',true),undefined,'opening a numeric input keeps the fine surface');
  assert.equal(previewUpdateStage(fine,'camera',false),undefined,'releasing an unchanged grip does not remesh');
  assert.equal(previewNeedsSettle(fine,'camera'),false);
- assert.equal(previewUpdateStage(fine,'committed-cut',false),'settled','a button or project load never requests a coarse draft');
+ assert.equal(previewUpdateStage(fine,'committed-cut',false),'draft','a button or project load shows a bounded draft before refinement');
  assert.equal(previewUpdateStage(fine,'dragged-camera',true),'draft','actual continuous geometry changes still get a responsive draft');
  const draft={geometry:'dragged-camera',stage:'draft'};
  assert.equal(previewNeedsSettle(draft,'dragged-camera'),true,'a paused focused input promotes without waiting for blur');
@@ -61,14 +61,14 @@ test('background tabs and worker recovery retain the latest snapshot without dup
 
 test('draft grid effort responds to active complexity and actual measured time within fixed bounds',()=>{
  const simple={...cloneModel(DEFAULT_MODEL),influences:[],shapes:[],asymmetry:0},complex=createStereoCameraStudy();
- assert.equal(previewResolution(simple,{mobile:true,editing:true}),60);
+ assert.equal(previewResolution(simple,{mobile:true,editing:true}),32);
  assert.ok(previewResolution(complex,{mobile:true,editing:true})<48,'many curved evaluators lower cubic draft sampling effort');
- assert.ok(previewResolution(complex,{mobile:true,editing:false})>=72);
- assert.equal(previewResolution({...simple,shapes:complex.shapes.map(s=>({...s,enabled:false}))},{mobile:true,editing:true}),60,'disabled shapes do not cost evaluation');
+ assert.ok(previewResolution(complex,{mobile:true,editing:false})>=64);
+ assert.equal(previewResolution({...simple,shapes:complex.shapes.map(s=>({...s,enabled:false}))},{mobile:true,editing:true}),32,'disabled shapes do not cost evaluation');
  const previous={resolution:60,milliseconds:2200};
- assert.equal(previewResolution(simple,{mobile:true,editing:true,previous}),28);
- assert.equal(previewResolution(simple,{mobile:true,editing:false,previous}),136,'a slow draft never lowers settled quality');
- assert.equal(previewResolution(simple,{mobile:true,editing:true,previous:{resolution:60,milliseconds:NaN}}),60);
+ assert.equal(previewResolution(simple,{mobile:true,editing:true,previous}),20);
+ assert.equal(previewResolution(simple,{mobile:true,editing:false,previous}),96,'a slow draft never lowers settled quality');
+ assert.equal(previewResolution(simple,{mobile:true,editing:true,previous:{resolution:60,milliseconds:NaN}}),32);
 });
 
 function equivalent(a,b){

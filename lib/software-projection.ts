@@ -61,8 +61,8 @@ export function fitSoftwareCamera(camera:SoftwareCamera,bounds:readonly number[]
  const scale=Math.min(Math.max(1,frame.width)*.78/Math.max(1,maxX-minX),Math.max(1,frame.height)*.78/Math.max(1,maxY-minY));
  return {...camera,center,scale:Math.max(.025,Math.min(80,scale))};
 }
-export function softwareView(camera:SoftwareCamera,view:'front'|'top'|'perspective'):SoftwareCamera{
- return {...camera,yaw:view==='perspective'?.62:0,pitch:view==='top'?Math.PI/2:view==='perspective'?.34:0};
+export function softwareView(camera:SoftwareCamera,view:'front'|'back'|'left'|'right'|'top'|'bottom'|'perspective'):SoftwareCamera{
+ return {...camera,yaw:view==='perspective'?.62:view==='back'?Math.PI:view==='left'?-Math.PI/2:view==='right'?Math.PI/2:0,pitch:view==='top'?Math.PI/2:view==='bottom'?-Math.PI/2:view==='perspective'?.34:0};
 }
 /** Painter order remains the default for picking and Canvas paths. A depth
  * buffer resolves visibility directly and can skip the triangle sort. */

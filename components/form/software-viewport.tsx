@@ -2,10 +2,10 @@
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {clamp,cloneModel,generateMeshAsync,modelBounds,sectionContoursAsync,withoutRipples} from '@/lib/form-engine';
 import type {FormModel,MeshData,SectionContours} from '@/lib/form-engine';
-import {LatestPreviewScheduler,previewRefinement,previewUpdateStage,previewNeedsSettle} from '@/lib/preview-scheduler';
+import {LatestPreviewScheduler,previewRefinement,previewUpdateStage} from '@/lib/preview-scheduler';
 import {previewCacheKey,getCachedPreview,putCachedPreview} from '@/lib/preview-cache';
 import type {ScheduledPreview} from '@/lib/preview-scheduler';
-import {selectedHandle,projectedHandleHit,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '@/lib/direct-manipulation';
+import {axisDragDistance,selectedHandle,projectedHandleHit,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '@/lib/direct-manipulation';
 import {pickCurrentSurface} from '@/lib/implicit-picking';
 import type {DirectHandle,DirectTransformMode,DirectTransformPatch} from '@/lib/direct-manipulation';
 import {TouchSession} from '@/lib/touch-session';
@@ -16,10 +16,10 @@ import {softwareRasterSteps} from '@/lib/software-raster';
 import type {SoftwareCamera,SoftwareFrame} from '@/lib/software-projection';
 import type {ViewportRef,ViewMode} from './viewport';
 
-export type SoftwareViewportProps={model:FormModel;view:ViewMode;selected:string;handles:boolean;section:number;components:boolean;wireframe:boolean;appearance:Appearance;editing:boolean;playing:boolean;canvasColor:string|null;transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';onTransform?:(id:string,patch:DirectTransformPatch)=>void;onSelect:(id:string,inspect?:boolean)=>void;onDrag:(id:string,x:number,y:number,z:number)=>void;onStart:()=>void;onEnd:()=>void;onUndo:()=>void;onSurfaceReady?:()=>void;onMetrics:(mesh:MeshData)=>void};
+export type SoftwareViewportProps={viewLocked?:boolean;moveAxis?:'x'|'y'|'z';model:FormModel;view:ViewMode;selected:string;handles:boolean;section:number;components:boolean;wireframe:boolean;appearance:Appearance;editing:boolean;playing:boolean;canvasColor:string|null;transformMode?:DirectTransformMode;transformAxis?:'x'|'y'|'z';onTransform?:(id:string,patch:DirectTransformPatch)=>void;onSelect:(id:string,inspect?:boolean)=>void;onDrag:(id:string,x:number,y:number,z:number)=>void;onStart:()=>void;onEnd:()=>void;onUndo:()=>void;onSurfaceReady?:()=>void;onMetrics:(mesh:MeshData)=>void};
 type Job={id:number;model:FormModel;resolution:number;draft:boolean;streamSurface:boolean;pixelsPerUnit:number;previewDetail:boolean};
 type Projection=ReturnType<typeof projectSoftwareMesh>;
-type Runtime={submit:(model:FormModel,draft:boolean,newRevision:boolean)=>void;scheduled?:ScheduledPreview;invalidate:()=>void;fit:(view?:'front'|'top'|'perspective')=>void;capture:()=>string;section:()=>void;validateInteraction:()=>void};
+type Runtime={submit:(model:FormModel,draft:boolean)=>void;scheduled?:ScheduledPreview;invalidate:()=>void;fit:(view?:import('./viewport').CameraView)=>void;capture:()=>string;section:()=>void;validateInteraction:()=>void};
 
 /** A real evaluated surface for browsers without WebGL. This bounded software
  * path keeps modelling available; it does not pretend to render imported GLTF
@@ -45,7 +45,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   const point=(event:PointerEvent)=>{const bounds=surface.getBoundingClientRect();return {x:event.clientX-bounds.left,y:event.clientY-bounds.top}};
   const gripMode=(handle:DirectHandle):DirectTransformMode|undefined=>{const p=latest.current,mode=handle.kind==='influence'||!p.onTransform?'move':p.transformMode??'move';return mode==='move'||directTransformPatch(p.model,handle.id,mode,mode==='size'?1:0,p.transformAxis??'z')?mode:undefined};
   const gripPoint=(handle:DirectHandle,mode:DirectTransformMode)=>{const anchor=projectSoftwarePoint(handle,activeCamera(),size),offset=directGripOffset(mode);return {anchor,at:{x:anchor.x+offset.x,y:anchor.y+offset.y}}};
-  const invalidate=()=>{if(disposed||document.hidden)return;if(continuation){needsDraw=true;refreshOverlay();return}revision++;if(!frameId)frameId=requestAnimationFrame(draw)};
+  const invalidate=()=>{if(disposed||document.hidden)return;const cube=document.getElementById('view-cube-orientation');if(cube)cube.style.transform=`rotateX(${camera.pitch}rad) rotateY(${-camera.yaw}rad)`;if(continuation){needsDraw=true;refreshOverlay();return}revision++;if(!frameId)frameId=requestAnimationFrame(draw)};
   // New geometry or a camera preset must discard an obsolete partial frame.
   // Selection-only changes can still refresh the existing complete overlay.
   const preemptSurface=()=>{if(continuation){window.clearTimeout(continuation);continuation=0}needsDraw=false;revision++;invalidate()};
@@ -94,7 +94,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    };
    paint();
   }
-  const fit=(view?:'front'|'top'|'perspective')=>{if(view)camera=softwareView(camera,view);camera=fitSoftwareCamera(camera,data?.indices.length?data.bounds:modelBounds(latest.current.model,false),size);fitted=true;preemptSurface()};
+  const fit=(view?:import('./viewport').CameraView)=>{if(latest.current.viewLocked)return;if(view)camera=softwareView(camera,view);camera=fitSoftwareCamera(camera,data?.indices.length?data.bounds:modelBounds(latest.current.model,false),size);fitted=true;preemptSurface()};
   const resize=()=>{
    const previous=document.createElement('canvas');previous.width=front.width;previous.height=front.height;previous.getContext('2d')?.drawImage(front,0,0);
    size={width:Math.max(1,el.clientWidth),height:Math.max(1,el.clientHeight)};const ratio=Math.min(window.devicePixelRatio||1,2);
@@ -108,7 +108,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
   const complete=(job:Job,mesh?:MeshData,message?:string,milliseconds?:number)=>{
    const result=queue.finish(job.id);
    if(result.accept&&!disposed){
-    if(mesh){displayStage=job.draft?'editing':'ready';el.dataset.previewStage='painting';el.dataset.previewResolution=String(mesh.sampling?.resolution??Math.max(0,...(mesh.components??[]).map(c=>c.sampling?.resolution??0)));el.dataset.previewTriangles=String(mesh.indices.length/3);data=mesh;dataIsDraft=job.draft;previous={resolution:job.resolution,milliseconds:milliseconds??0};if(!fitted)fit();if(!job.draft){latest.current.onSurfaceReady?.();latest.current.onMetrics(mesh);void putCachedPreview(cacheKey(job),{mesh})}setError('');preemptSurface()}
+    if(mesh){displayStage=job.draft?'editing':'ready';el.dataset.previewStage='painting';el.dataset.previewResolution=String(mesh.sampling?.resolution??Math.max(0,...(mesh.components??[]).map(c=>c.sampling?.resolution??0)));el.dataset.previewTriangles=String(mesh.indices.length/3);data=mesh;dataIsDraft=job.draft;previous={resolution:job.resolution,milliseconds:milliseconds??0};if(!fitted)fit();latest.current.onSurfaceReady?.();if(!job.draft){latest.current.onMetrics(mesh);void putCachedPreview(cacheKey(job),{mesh})}setError('');preemptSurface();if(job.draft){const revision=job.id;setTimeout(()=>{const r=runtime.current;if(disposed||request!==revision||r?.scheduled?.stage!=='draft')return;r.scheduled={geometry:JSON.stringify(job.model),stage:'settled'};submit(job.model,false)},latest.current.editing?160:0)}}
     else if(message)setError('The surface could not be evaluated. Try a smaller influence.');
     setBusy(!!mesh||job.draft);
    }
@@ -126,8 +126,8 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    const controller=new AbortController();fallback=controller;const started=performance.now();
    generateMeshAsync(job.model,job.resolution,previewRefinement(job.draft,job.pixelsPerUnit),undefined,{signal:controller.signal,budgetMs:6,draft:job.draft,previewDetail:job.previewDetail,creases:true,...(job.streamSurface?{onSurface:(mesh:MeshData)=>showSurface(job,mesh)}:{})}).then(mesh=>complete(job,mesh,undefined,performance.now()-started),error=>complete(job,undefined,controller.signal.aborted?undefined:String(error))).finally(()=>{if(fallback===controller)fallback=undefined});
   };
-  const submit=(model:FormModel,draft:boolean,newRevision:boolean)=>{
-   const id=newRevision?++request:request;if(queue.current&&queue.current.id!==id){worker?.postMessage({cancel:queue.current.id});fallback?.abort()}queue.invalidate(id);if(document.hidden)queue.pause();
+  const submit=(model:FormModel,draft:boolean)=>{
+   const id=++request;if(queue.current&&queue.current.id!==id){worker?.postMessage({cancel:queue.current.id});fallback?.abort()}queue.invalidate(id);if(document.hidden)queue.pause();
    const mobile=matchMedia('(max-width:760px), (max-width:960px) and (max-height:520px) and (pointer:coarse)').matches,resolution=softwarePreviewResolution(model,{mobile,editing:draft,previous});
    const pixelsPerUnit=camera.scale*Math.min(window.devicePixelRatio||1,2);if(!draft)tolerance=previewRefinement(false,pixelsPerUnit)!.tolerance;setBusy(true);const job=queue.enqueue({id,model,resolution,draft,streamSurface:!draft,pixelsPerUnit,previewDetail:!draft});if(job)dispatch(job);
   };
@@ -136,7 +136,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    if(disposed||!data||latest.current.editing||runtime.current?.scheduled?.stage!=='settled')return;
    const next=previewRefinement(false,camera.scale*Math.min(window.devicePixelRatio||1,2))!.tolerance;
    if(next>=(tolerance??.04))return;
-   submit(withoutRipples(latest.current.model),false,true);
+   submit(withoutRipples(latest.current.model),false);
   };
   const scheduleDetail=()=>{if(detailTimer)clearTimeout(detailTimer);detailTimer=setTimeout(requestDetail,160)};
   const section=()=>{
@@ -161,7 +161,7 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    if(drag.mode==='rotate'){drag.rotation+=directRotationDelta(drag.previous,{x,y},drag.anchor);drag.previous={x,y}}
    const patch=drag.mode==='move'?undefined:directTransformPatch(drag.model,h.id,drag.mode,drag.mode==='size'?directScaleFactor(x-drag.x,y-drag.y):drag.rotation,drag.axis);
    if(drag.mode!=='move'&&!patch)return;clearHold();if(!drag.started){drag.started=true;latest.current.onStart();session.consume()}
-   if(drag.mode==='move'){const delta=softwarePlaneDelta(drag.camera,x-drag.x,y-drag.y);latest.current.onDrag(h.id,clamp(h.x+delta.x,...h.ranges.x),clamp(h.y+delta.y,...h.ranges.y),clamp(h.z+delta.z,...h.ranges.z))}
+   if(drag.mode==='move'){const delta=softwarePlaneDelta(drag.camera,x-drag.x,y-drag.y);if(latest.current.moveAxis){const axis=latest.current.moveAxis,from=projectSoftwarePoint(h,drag.camera,size),point={x:h.x,y:h.y,z:h.z};point[axis]+=1;const to=projectSoftwarePoint(point,drag.camera,size),distance=axisDragDistance(x-drag.x,y-drag.y,to.x-from.x,to.y-from.y,1/drag.camera.scale);delta.x=delta.y=delta.z=0;delta[axis]=distance}latest.current.onDrag(h.id,clamp(h.x+delta.x,...h.ranges.x),clamp(h.y+delta.y,...h.ranges.y),clamp(h.z+delta.z,...h.ranges.z))}
    else if(patch)latest.current.onTransform?.(h.id,patch);
    invalidate();
   };
@@ -174,9 +174,9 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
    const hit=ray?pickCurrentSurface(p.model,ray):undefined;
    if(hit)p.onSelect(hit.shapeId??(p.model.lattice?.enabled?'lattice':'body'),inspect);
   };
-  const pan=(dx:number,dy:number)=>{const delta=softwarePlaneDelta(activeCamera(),dx,dy);camera={...camera,center:{x:camera.center.x-delta.x,y:camera.center.y-delta.y,z:camera.center.z-delta.z}};invalidate()};
-  const orbit=(dx:number,dy:number)=>{if(latest.current.view==='section'||latest.current.view==='silhouette'){pan(dx,dy);return}camera={...camera,yaw:camera.yaw-dx*.006,pitch:clamp(camera.pitch+dy*.006,-1.48,1.48)};invalidate()};
-  const zoom=(factor:number)=>{camera={...camera,scale:clamp(camera.scale*factor,.025,80)};invalidate()};
+  const pan=(dx:number,dy:number)=>{if(latest.current.viewLocked)return;const delta=softwarePlaneDelta(activeCamera(),dx,dy);camera={...camera,center:{x:camera.center.x-delta.x,y:camera.center.y-delta.y,z:camera.center.z-delta.z}};invalidate()};
+  const orbit=(dx:number,dy:number)=>{if(latest.current.viewLocked)return;if(latest.current.view==='section'||latest.current.view==='silhouette'){pan(dx,dy);return}camera={...camera,yaw:camera.yaw-dx*.006,pitch:clamp(camera.pitch+dy*.006,-1.48,1.48)};invalidate()};
+  const zoom=(factor:number)=>{if(latest.current.viewLocked)return;camera={...camera,scale:clamp(camera.scale*factor,.025,80)};invalidate()};
   const down=(event:PointerEvent)=>{
    if(event.pointerType!=='touch'&&event.button!==0)return;event.preventDefault();const at=point(event);surface.setPointerCapture(event.pointerId);
    if(event.pointerType==='touch'){
@@ -210,12 +210,10 @@ export const SoftwareViewport=forwardRef<ViewportRef,SoftwareViewportProps>(func
  const geometryKey=JSON.stringify(withoutRipples(props.model));
  useEffect(()=>{
   const r=runtime.current;if(!r)return;const model=JSON.parse(geometryKey) as FormModel;
-  const submit=(draft:boolean,newRevision:boolean)=>{r.scheduled={geometry:geometryKey,stage:draft?'draft':'settled'};r.submit(model,draft,newRevision)};
+  const submit=(draft:boolean)=>{r.scheduled={geometry:geometryKey,stage:draft?'draft':'settled'};r.submit(model,draft)};
   const stage=previewUpdateStage(r.scheduled,geometryKey,props.editing);
-  if(stage)submit(stage==='draft',true);
-  if(!previewNeedsSettle(r.scheduled,geometryKey))return;
-  const timer=setTimeout(()=>{if(runtime.current===r&&previewNeedsSettle(r.scheduled,geometryKey))submit(false,false)},160);
-  return()=>clearTimeout(timer);
+  if(stage&&r.scheduled?.geometry!==geometryKey)submit(true);
+
  },[geometryKey,props.editing]);
  useEffect(()=>{runtime.current?.section();runtime.current?.invalidate()},[props.view,props.model,props.section,props.handles,props.selected,props.appearance,props.wireframe,props.canvasColor,props.editing,props.transformMode,props.transformAxis]);
  useEffect(()=>{runtime.current?.validateInteraction()},[props.editing,props.handles,props.selected,props.transformMode,props.transformAxis]);

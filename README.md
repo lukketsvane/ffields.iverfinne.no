@@ -35,6 +35,10 @@ The production build is a static site in `out/`. `vercel.json` supplies the buil
 - Eight editable engineering studies: Counterflow, Vortex, Halo, Strut, Confluence, Oculus, Cellular panel and Spiral. Each opens as primitive operations and analytic lattice settings, with its actual geometry shown in the project picker.
 - Gyroid and diamond sheets, honeycomb channels and octet struts with cell size, nominal thickness, thickness gradient, exterior skin and progressive cutaway controls. Optional regions retain solid mounting features outside the cellular core.
 - Continuous GPU ripple deformation starts on launch and stays active during selection, editing, undo and shape insertion. Pause is explicit.
+- A live six-face view cube, perspective and fit controls, and a camera lock that freezes orbit, pan and zoom while modelling.
+- Free or X/Y/Z-constrained movement for grips, held-object dragging and two-finger object pans. Locked movement suppresses two-finger scaling and twisting.
+- New shapes and edits show a bounded draft first, then refine automatically. Obsolete mesh work is cancelled and every refinement has its own revision; export detail remains independent.
+- Tool icons have transparent backgrounds.
 - Camera pose survives editing, asset loading and projection changes. Fit and named views are explicit actions.
 - User-selected canvas colour, retained on the device.
 - Docked asset/field browser. Real component assets insert into the 3D scene with position, rotation, scale and visibility controls.

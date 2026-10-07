@@ -440,3 +440,14 @@ button{transition:background-color .12s,color .12s}button:disabled{cursor:defaul
  .form-app .quick-value-line select{width:82px}
  .form-app .quick-value-line:has(.quick-value-done) select{width:60px}
 }
+
+.view-cube-control{position:absolute;top:14px;right:16px;z-index:21;display:grid;justify-items:center;gap:8px}
+.view-cube-stage{width:84px;height:80px;display:grid;place-items:center;perspective:320px}
+.view-cube{position:relative;width:44px;height:44px;transform-style:preserve-3d;transform:rotateX(-20deg) rotateY(-30deg)}
+.cube-face{position:absolute;inset:0;border:1px solid var(--label);border-radius:2px;background:var(--panel);color:var(--foreground);font-size:9px;text-transform:uppercase;backface-visibility:hidden;touch-action:manipulation}
+.cube-face:hover{background:var(--selected)}.cube-front{transform:translateZ(22px)}.cube-back{transform:rotateY(180deg) translateZ(22px)}.cube-left{transform:rotateY(-90deg) translateZ(22px)}.cube-right{transform:rotateY(90deg) translateZ(22px)}.cube-top{transform:rotateX(90deg) translateZ(22px)}.cube-bottom{transform:rotateX(-90deg) translateZ(22px)}
+.view-cube-actions{display:flex;gap:2px}.view-cube-actions button{display:grid;place-items:center;width:30px;height:32px;background:transparent;border:0;color:var(--label);font-size:11px;touch-action:manipulation}.view-cube-actions button[aria-pressed=true]{color:var(--handle)}
+.move-constraint{position:absolute;top:14px;left:12px;z-index:21;display:flex;align-items:center;gap:2px;font-size:11px;color:var(--label)}.move-constraint span{margin-right:5px}.move-constraint button{min-width:32px;min-height:36px;border:0;border-bottom:2px solid transparent;background:transparent;touch-action:manipulation}.move-constraint button[aria-pressed=true]{border-color:var(--handle);color:var(--handle)}
+/* Tool icons stay unfilled, including their active and hover states. */
+.form-app .icon-button,.form-app .icon-button:hover,.form-app .icon-button.active,.form-app .quick-dock-button.active{background:transparent;box-shadow:none}
+@media(max-width:760px),(max-width:960px) and (max-height:520px) and (pointer:coarse){.view-cube-control{top:0;right:8px;gap:0}.move-constraint{top:8px;left:8px}.view-cube-actions button{width:32px;height:36px}.viewport-viewbar{top:112px}}

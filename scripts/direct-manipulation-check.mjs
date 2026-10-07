@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DEFAULT_MODEL,cloneModel,makeInfluence,evaluateBase,validateModel} from '../lib/form-engine.ts';
 import {makeShape,evaluateShape} from '../lib/shapes.ts';
-import {selectedHandle,projectedHandleHit,pickShapeAtPoint,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '../lib/direct-manipulation.ts';
+import {axisDragDistance,selectedHandle,projectedHandleHit,pickShapeAtPoint,directTransformPatch,directGripOffset,directScaleFactor,directRotationDelta} from '../lib/direct-manipulation.ts';
 import {applyConstructionCommand} from '../lib/construction.ts';
 import {attachmentLocalToWorld} from '../lib/attachments.ts';
 import {sweepScaleLimits} from '../lib/quick-modelling.ts';
@@ -208,4 +208,12 @@ test('invalid gesture values and unsupported objects never produce a transform p
  source.enabled=false;assert.equal(directTransformPatch(m,source.id,'size',2),undefined);
  const invalidSweep={...makeShape('sweep'),id:'broken',path:[{x:0,y:0,z:0,radius:0}]};
  assert.equal(directTransformPatch(model([invalidSweep]),invalidSweep.id,'size',2),undefined);
+});
+
+test('axis motion projects onto the chosen world direction and supports end-on views',()=>{
+ assert.equal(axisDragDistance(20,8,2,0),10);
+ assert.equal(axisDragDistance(20,-8,0,-2),4);
+ assert.equal(axisDragDistance(6,-8,3,-4),2);
+ assert.equal(axisDragDistance(20,-10,0,0),2);
+ assert.equal(axisDragDistance(NaN,0,2,0),0);
 });
